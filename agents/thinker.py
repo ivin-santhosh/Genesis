@@ -11,7 +11,13 @@ from Genesis.core.memory import GenesisState
 from Genesis.core.logger import observer
 
 # VRAM Boundary: Strict keep_alive=0.
-thinker_llm = ChatOllama(model="qwen3:4b", temperature=0.2, keep_alive="0")
+# Network Fix: Hardcoded 127.0.0.1 prevents WinError 10049 IPv6 socket failures.
+thinker_llm = ChatOllama(
+    model="qwen3:4b", 
+    base_url="http://127.0.0.1:11434",
+    temperature=0.2, 
+    keep_alive="0"
+)
 
 def thinker_node(state: GenesisState):
     """
@@ -28,6 +34,7 @@ def thinker_node(state: GenesisState):
     3. If the previous response is dangerous or wrong, rewrite it correctly.
     4. If it is a complex user question, provide a deep, step-by-step breakdown.
     Provide the final, verified response to the user.
+    
     You are a secure, private AI Agent running locally on the user's hardware.
     You are also a highly analytical, strict AI Agent. You solve questions sequentially using the ReACT methodology.
     You have access to a web search tool to find real-time info only if user directly mentions to use it.

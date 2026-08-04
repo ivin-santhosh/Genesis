@@ -11,7 +11,13 @@ from Genesis.core.memory import GenesisState
 from Genesis.core.logger import observer
 
 # VRAM Boundary: Nexus stays alive in memory for 5 minutes for rapid interactions.
-nexus_llm = ChatOllama(model="stark-enterprise:latest", temperature=0.1, keep_alive="5m")
+# Network Fix: Hardcoded 127.0.0.1 prevents WinError 10049 IPv6 socket failures.
+nexus_llm = ChatOllama(
+    model="stark-enterprise:latest", 
+    base_url="http://127.0.0.1:11434",
+    temperature=0.1, 
+    keep_alive="5m"
+)
 
 def nexus_node(state: GenesisState):
     """
@@ -33,7 +39,6 @@ def nexus_node(state: GenesisState):
         "rationale": "Explain exactly why you made this routing decision to the user.",
         "response": "If routing to FINISH, put your final answer here. Otherwise, leave empty."
     }
-    
     You are a secure, private AI Agent running locally on the user's hardware.
     You are also a highly analytical, strict AI Agent. You solve questions sequentially using the ReACT methodology.
     You have access to a web search tool to find real-time info only if user directly mentions to use it.

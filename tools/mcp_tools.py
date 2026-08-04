@@ -2233,7 +2233,7 @@ if __name__ == "__main__":
 # -----------------------------
 # Storage locations
 # -----------------------------
-_BASE_DIR = Path(__file__).resolve().parent
+_BASE_DIR = Path(__file__).resolve().parent # by default it's "D:\Ivin\AI_Projects\Local_AI_Projects\Genesis\tools\"
 _REGISTRY_DIR = _BASE_DIR / "registry"
 _REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -2241,6 +2241,25 @@ STATIC_TOOLS_FILE = _REGISTRY_DIR / "static_tools.json"
 CUSTOM_DSL_TOOLS_FILE = _REGISTRY_DIR / "custom_dsl_tools.json"
 CUSTOM_PY_TOOLS_FILE = _REGISTRY_DIR / "custom_python_tools.json"
 AUDIT_LOG_FILE = _REGISTRY_DIR / "soar_audit_log.jsonl"
+
+
+# ---------------------------------------------------------
+# NEW: In-Memory Callable Registry (Fixes Pydantic Error)
+# ---------------------------------------------------------
+# Stores the live Python functions that cannot be passed over JSON-RPC.
+
+CALLER_REGISTRY: Dict[str, Callable[[str, Dict[str, Any]], Any]] = {}
+
+def register_live_caller(name: str, func: Callable[[str, Dict[str, Any]], Any]) -> None:
+    """Dynamically registers or updates a live execution function."""
+    CALLER_REGISTRY[name] = func
+
+def get_live_caller(name: str) -> Callable[[str, Dict[str, Any]], Any]:
+    """Retrieves a live execution function or raises a safe exception."""
+    if name not in CALLER_REGISTRY:
+        raise ValueError(f"Execution engine '{name}' is not registered or active.")
+    return CALLER_REGISTRY[name]
+
 
 # -----------------------------
 # Helper: JSON safe write
@@ -2492,12 +2511,14 @@ def _save_custom_python_tools(payload: Dict[str, Any]) -> None:
 @mcp.tool()
 def _normalize_tool_name(name: str) -> str:
     """Tool to normalize an existing tool name"""
+    if not name:
+        raise ValueError("Tool name cannot be empty.")
     name = name.strip()
     name = re.sub(r"[^a-zA-Z0-9_]", "_", name)
     name = re.sub(r"_+", "_", name)
     name = name.strip("_")
     if not name:
-        raise ValueError("Tool name cannot be empty.")
+        raise ValueError(f"Tool name *** {name} ***: Invalid !...\n" + ("-"*50) + "\nExamples: Valid Tool Names: 'get_user_data', 'fetch-file-123', __run_test__', etc\nInvalid Tool Names: '', ' ', '!@$', etc\n" + ("-"*50) + "\n")
     if len(name) > 80:
         name = name[:80]
     return name
@@ -2535,13 +2556,32 @@ def _resolve_template(value: Any, context: Dict[str, Any]) -> Any:
     return value
 
 # -----------------------------
+# DSL Internal Tool Caller
+# -----------------------------
+async def default_dsl_caller(tool: str, tool_args: Dict[str, Any]) -> Any:
+    """
+    Calls an existing MCP tool by name using the server runtime environment.
+    Supports both synchronous and asynchronous functions.
+    """
+    fn = globals().get(tool)
+    if fn is None or not callable(fn):
+        raise ValueError(f"Tool not found in server runtime: {tool}")
+    
+    if hasattr(fn, "__call__"):
+        res = fn(**tool_args)  # type: ignore
+        if hasattr(res, "__await__"):
+            return await res  # type: ignore
+        return res
+    raise ValueError(f"Tool not callable: {tool}")
+
+# -----------------------------
 # DSL runner
 # -----------------------------
 @mcp.tool()
 async def _run_dsl_tool(
     tool_name: str,
     input_args: Dict[str, Any],
-    tool_caller: Callable[[str, Dict[str, Any]], Any],
+    engine_name: str = "default",
 ) -> Dict[str, Any]:
     """
     Execute a stored DSL tool (playbook) step by step.
@@ -2549,7 +2589,7 @@ async def _run_dsl_tool(
     Args:
         tool_name (str): Name of the DSL tool to run.
         input_args (Dict[str, Any]): Input arguments for the tool.
-        tool_caller (Callable): Function to call each step tool.
+        engine_name (str): The registered name of the execution function. Defaults to "default".
 
     Returns:
         Dict[str, Any]: Execution results including steps, inputs, and audit metadata.
@@ -2559,11 +2599,14 @@ async def _run_dsl_tool(
         - Empty steps → raises ValueError.
         - Invalid step definitions → raises ValueError.
         - Errors during execution → logged to audit and re-raised.
-
-    Notes:
-        - Each step is audited (start, error, done).
-        - Supports variable substitution in step arguments.
     """
+    # 1. Resolve the correct caller function using our string engine_name
+    if engine_name == "default":
+        tool_caller = default_dsl_caller
+    else:
+        # Falls back to our dynamic registry if you provide a custom engine name
+        tool_caller = get_live_caller(engine_name)
+
     dsl_payload = _load_custom_dsl_tools()
     tools: Dict[str, Any] = dsl_payload.get("tools", {})
     if tool_name not in tools:
@@ -2600,7 +2643,11 @@ async def _run_dsl_tool(
         })
 
         try:
-            step_result = await tool_caller(step_tool, resolved_args)
+            # 2. Safely call the chosen tool executor engine
+            if inspect.iscoroutinefunction(tool_caller):
+                step_result = await tool_caller(step_tool, resolved_args)
+            else:
+                step_result = tool_caller(step_tool, resolved_args)
         except Exception as e:
             err = {
                 "step_index": idx,
@@ -2635,6 +2682,9 @@ async def _run_dsl_tool(
             "tool": step_tool,
         })
 
+    # 3. Append the final run metadata event to the audit log
+    _append_audit({"type": "dsl_tool_run_done", "tool": tool_name})
+
     return {
         "dsl_tool": tool_name,
         "input_args": input_args,
@@ -2642,10 +2692,6 @@ async def _run_dsl_tool(
         "results": results,
         "finished_utc": _utc_now_iso(),
     }
-
-# -----------------------------
-# Raw Python execution (OPTIONAL, permission gated)
-# -----------------------------
 
 
 def _validate_python_tool_code(code: str) -> None:
@@ -2682,6 +2728,9 @@ def _validate_python_tool_code(code: str) -> None:
             # Not hard-blocking: we allow but warn in response.
             return
 
+# -----------------------------
+# Raw Python execution (OPTIONAL, permission gated)
+# -----------------------------
 
 @mcp.tool()
 async def _run_python_tool(
@@ -2720,7 +2769,7 @@ async def _run_python_tool(
             "status": "permission_required",
             "message": (
                 "This tool is a RAW PYTHON custom tool. "
-                "You must re-run with permission_granted=true to execute."
+                "You must re-run with permission_granted=true which should be only be granted by the user directly in order to execute."
             ),
             "tool": tool_name,
         }
@@ -4229,8 +4278,5 @@ def ai_attack_simulation_reasoner(simulation_type: str = "generic") -> dict:
 
 # ---------------------------------------------------------------------------------------------------------------------------------------
 
-
-if __name__ == "__main__":
-    mcp.run(transport = "stdio")
     
     

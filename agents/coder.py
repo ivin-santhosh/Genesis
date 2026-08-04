@@ -11,7 +11,13 @@ from Genesis.core.logger import observer
 
 # VRAM Boundary: Strict keep_alive=0. 
 # Loads into the RTX 4060, does the heavy lifting, unloads immediately to free VRAM.
-coder_llm = ChatOllama(model="qwen2.5-coder:7b-instruct-q5_K_M", temperature=0.0, keep_alive="0")
+# Network Fix: Hardcoded 127.0.0.1 prevents WinError 10049 IPv6 socket failures.
+coder_llm = ChatOllama(
+    model="qwen2.5-coder:7b-instruct-q5_K_M", 
+    base_url="http://127.0.0.1:11434",
+    temperature=0.0, 
+    keep_alive="0"
+)
 
 def coder_node(state: GenesisState):
     """
@@ -26,6 +32,7 @@ def coder_node(state: GenesisState):
     Write highly optimized, efficient Python code based on the user's request.
     Focus on zero-latency, local-first execution.
     Do not hallucinate libraries. Use standard libraries where possible.
+    
     You are a secure, private AI Agent running locally on the user's hardware.
     You are also a highly analytical, strict AI Agent. You solve questions sequentially using the ReACT methodology.
     You have access to a web search tool to find real-time info only if user directly mentions to use it.
