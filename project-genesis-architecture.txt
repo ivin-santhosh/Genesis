@@ -1,0 +1,20 @@
+Genesis/
+    │
+    ├── core/
+    │   ├── __init__.py
+    │   ├── memory.py         (From Phase 1)
+    │   ├── routing.py        (From Phase 1)
+    │   ├── logger.py         (NEW - Transparency Engine)
+    │   └── graph.py          (NEW - Neural Wiring)
+    │
+    ├── tools/
+    │   ├── __init__.py
+    │   └── meta_hand.py      (From Phase 2)
+    │
+    ├── agents/
+    │   ├── __init__.py
+    │   ├── nexus.py          (NEW - The Brain)
+    │   ├── coder.py          (NEW - The Muscle)
+    │   └── thinker.py        (NEW - The Immune System)
+    │
+    └── main.py               (Entry point we will build next)
