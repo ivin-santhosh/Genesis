@@ -39,7 +39,9 @@ def secure_system_bootstrap():
         "duckduckgo-search",
         "langchain-mcp-adapters",
         "requests",
-        "urllib3"
+        "mcp<2",
+        "urllib3",
+        "pywin32"
     ]
     
     for pkg in packages:
@@ -107,6 +109,7 @@ async def bootstrap_mcp_tools():
     observer.log_thought_process("Meta-Hand", "Bootstrapping Motor Cortex", "Connecting to local MCP server...")
     current_dir = os.path.dirname(os.path.abspath(__file__))
     server_path = os.path.join(current_dir, "tools", "mcp_tools.py")
+    print("MCP SERVER PATH : " + str(server_path)+"\n")
     
     if not os.path.exists(server_path):
         observer.log_thought_process("System", "CRITICAL ERROR", f"Cannot find mcp_tools.py at {server_path}")
@@ -121,9 +124,11 @@ async def bootstrap_mcp_tools():
             }
         }
     )
-    
+    print(f"Client:\n{'-'*50}\n{client}\n")
     # Handshake and discover tools
     tools = await client.get_tools()
+    print(f"Tools:\n{'-'*50}\n{tools}\n")
+    print(f"type(tools):\n{type(tools)}\n")
     
     # Register all discovered MCP tools into Meta-Hand's O(1) registry
     for t in tools:
