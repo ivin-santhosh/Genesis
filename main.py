@@ -1,47 +1,73 @@
 # -*- coding: utf-8 -*-
 
-# For forcing installation of the essential packages first
+import sys
+import os
+import subprocess
+import asyncio
+import warnings
+
+# =========================================================
+# THE SPYDER IDE "FILENO" MASTER PATCH
+# =========================================================
+# Spyder's IPython console uses fake streams without OS file descriptors.
+# This intercepts Windows subprocess creation and swaps fake streams for real ones.
+_orig_popen = subprocess.Popen
+_devnull_out = open(os.devnull, 'w')
+_devnull_in = open(os.devnull, 'r')
+
+class SpyderSafePopen(_orig_popen):
+    def __init__(self, *args, **kwargs):
+        def is_fake_stream(obj):
+            # Spyder's fake streams (ipykernel.iostream.OutStream) DO have a `fileno`
+            # attribute but RAISE `UnsupportedOperation` when it is called.
+            # hasattr() returns True for these — we must CALL fileno() and catch.
+            if obj is None or isinstance(obj, int):
+                return False
+            try:
+                obj.fileno()
+                return False  # Call succeeded — real OS file descriptor
+            except Exception:
+                return True   # Raised — confirmed fake IDE stream
+
+        if is_fake_stream(kwargs.get('stderr')):
+            kwargs['stderr'] = _devnull_out
+        if is_fake_stream(kwargs.get('stdout')):
+            kwargs['stdout'] = _devnull_out
+        if is_fake_stream(kwargs.get('stdin')):
+            kwargs['stdin'] = _devnull_in
+            
+        super().__init__(*args, **kwargs)
+
+subprocess.Popen = SpyderSafePopen
+
 # =========================================================
 # CTO SYSTEM ENGINE: FACTORY DEPENDENCY REPAIR & LOADER
 # =========================================================
-import sys
-import subprocess
-import warnings
-
-# Suppress the harmless but annoying urllib3 dependency warning
 warnings.filterwarnings("ignore", category=UserWarning, module="requests")
-
 
 def secure_system_bootstrap():
     """Bootstraps missing pip engine and automatically pulls framework layers."""
+    import site
+    import importlib
+    
     active_python = sys.executable
     print(f"⚙️ Target Engine Path: {active_python}")
     
-    # 1. Force bootstrap the 'pip' package installer engine if missing
     try:
         import pip
     except ImportError:
-        print("🔧 Pip engine missing in Spyder 6 sandbox. Injecting native installer binary...")
+        print("🔧 Pip engine missing. Injecting native installer binary...")
         try:
-            # Runs Python's built-in recovery framework package deployment tool
             subprocess.check_call([active_python, "-m", "ensurepip", "--default-pip"])
-            print("✅ Pip engine deployed successfully into Spyder path.")
+            print("✅ Pip engine deployed successfully.")
         except Exception as e:
             print(f"❌ Failed to run ensurepip tool: {str(e)}")
             return False
 
-    # 2. Sequential dependency matrix extraction loop
     packages = [
-        "langchain",
-        "langchain-ollama", 
-        "langchain-core", 
-        "langgraph", 
-        "duckduckgo-search",
-        "langchain-mcp-adapters",
-        "requests",
-        "mcp<2",
-        "urllib3",
-        "pywin32"
+        "langchain", "langchain-ollama", "langchain-core", 
+        "langgraph", "duckduckgo-search", "langchain-mcp-adapters",
+        "requests", "mcp<2", "urllib3", "pywin32", "nest-asyncio"
     ]
     
     for pkg in packages:
@@ -51,7 +77,6 @@ def secure_system_bootstrap():
         except ImportError:
             print(f"📦 Downloading and matching: {pkg}...")
             try:
-                # Use absolute executable references to download cleanly
                 subprocess.check_call([
                     active_python, "-m", "pip", "install", 
                     pkg, "--upgrade", "--no-warn-script-location"
@@ -61,36 +86,25 @@ def secure_system_bootstrap():
                 print(f"❌ Aborted installation on {pkg}: {str(error)}")
                 return False
                 
+    # Force Python to recognize newly installed packages inside Spyder's jailed paths
+    importlib.invalidate_caches()
+    user_site = site.getusersitepackages()
+    if user_site not in sys.path:
+        sys.path.append(user_site)
+        
     print("🚀 All framework arrays mapped safely!")
     return True
 
-# Initialize structural runtime validation gate
 if not secure_system_bootstrap():
     print("⚠️ Architecture halt: Environment setup incomplete.")
     sys.exit(1)
 
 
-
-# Main Program Begins
-
-"""
-Project Genesis - Main Desktop Interface Engine
-Date: August 2026
-Location: Kalyan, Maharashtra, India
-
-The command center for Project Genesis. Integrates:
-1. 0ms Spinal Reflex Arc (routing.py) - Bypasses LLMs for instant actions.
-2. LangGraph Neural Pathways (graph.py) - Prefrontal, Muscle, and Immune Agents.
-3. Nervous System Observer (logger.py) - Real-time biomimetic transparency.
-4. Meta-Hand Motor Cortex (meta_hand.py) - MCP Tool Execution Registry.
-"""
-
-import sys
-import os
-import asyncio
+# =========================================================
+# MAIN PROGRAM BEGINS
+# =========================================================
 from typing import List
 
-# Ensure we can import from the Genesis package
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from Genesis.core.memory import GenesisState
@@ -98,86 +112,171 @@ from Genesis.core.routing import ReflexRouter
 from Genesis.core.logger import observer
 from Genesis.core.graph import process_stimulus
 from Genesis.tools.meta_hand import meta_hand_manager
-
-# Import MCP Client to connect to your existing mcp_tools.py
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 async def bootstrap_mcp_tools():
-    """
-    Connects to the local MCP server (mcp_tools.py) and loads capabilities into Meta-Hand.
-    """
     observer.log_thought_process("Meta-Hand", "Bootstrapping Motor Cortex", "Connecting to local MCP server...")
     current_dir = os.path.dirname(os.path.abspath(__file__))
     server_path = os.path.join(current_dir, "tools", "mcp_tools.py")
-    print("MCP SERVER PATH : " + str(server_path)+"\n")
     
     if not os.path.exists(server_path):
         observer.log_thought_process("System", "CRITICAL ERROR", f"Cannot find mcp_tools.py at {server_path}")
         sys.exit(1)
 
+    # sys.executable returns Spyder's own runtime Python (C:\ProgramData\spyder-6\...)
+    # which lacks all project dependencies. Always use the project .venv Python.
+    venv_python = os.path.join(current_dir, ".venv", "Scripts", "python.exe")
+    if not os.path.exists(venv_python):
+        observer.log_thought_process("System", "WARNING", f".venv not found at {venv_python}. Falling back to sys.executable.")
+        venv_python = sys.executable
+
+    observer.log_thought_process("Meta-Hand", "MCP Engine", f"Child process target: {venv_python}")
+
     client = MultiServerMCPClient(
         {
-            "LocalBrain":  {
-                "command": "python",
+            "LocalBrain": {
+                "command": venv_python,  # EXPLICIT .venv — never Spyder's runtime Python
                 "args": [server_path],
                 "transport": "stdio",
             }
         }
     )
-    print(f"Client:\n{'-'*50}\n{client}\n")
-    # Handshake and discover tools
-    tools = await client.get_tools()
-    print(f"Tools:\n{'-'*50}\n{tools}\n")
-    print(f"type(tools):\n{type(tools)}\n")
     
-    # Register all discovered MCP tools into Meta-Hand's O(1) registry
+    # -----------------------------------------------------------------------
+    # SPYDER STREAM ISOLATION:
+    # MCP's stdio_client captures sys.stderr at call time (errlog=sys.stderr)
+    # and passes it directly to asyncio.create_subprocess_exec as the child's
+    # stderr. asyncio bypasses our SpyderSafePopen patch and calls fileno() on
+    # the fake Spyder stream, crashing the child before it sends a single byte.
+    # Fix: swap sys.stderr for the real devnull handle for the duration of the call.
+    # -----------------------------------------------------------------------
+    _real_stderr = sys.stderr
+    sys.stderr = _devnull_out  # _devnull_out is the real os.devnull file handle
+    try:
+        tools = await client.get_tools()
+    finally:
+        sys.stderr = _real_stderr  # Always restore, even on exception
+
     for t in tools:
         meta_hand_manager.register_tool(t.name, t)
         
     observer.log_thought_process("Meta-Hand", "Muscle Memory Updated", f"Successfully loaded {len(tools)} capabilities from MCP.")
     return client
 
+
+
+# =========================================================
+# OLLAMA ENGINE GUARDIAN — Auto-Launch & Health Monitor
+# =========================================================
+def ensure_ollama_running() -> bool:
+    """
+    Checks if Ollama is live. If not, finds and launches it automatically.
+    Polls the health endpoint every second for up to 30 seconds.
+    """
+    import urllib.request
+    import urllib.error
+    import time
+
+    HEALTH_URL = "http://localhost:11434/api/tags"
+
+    CANDIDATE_PATHS = [
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Ollama", "ollama.exe"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Ollama", "ollama.exe"),
+        os.path.join("C:\\", "Program Files", "Ollama", "ollama.exe"),
+        "ollama",  # Fallback: if ollama is on PATH
+    ]
+
+    def is_alive() -> bool:
+        try:
+            urllib.request.urlopen(HEALTH_URL, timeout=2)
+            return True
+        except Exception:
+            return False
+
+    if is_alive():
+        print("✅ [Ollama] Engine is live and responsive.")
+        return True
+
+    print("⚡ [Ollama] Not detected. Searching for executable...")
+
+    ollama_exe = None
+    for path in CANDIDATE_PATHS:
+        if path == "ollama":
+            # Check if 'ollama' is reachable on PATH without os.path.exists
+            try:
+                result = subprocess.run(["ollama", "--version"], capture_output=True, timeout=3)
+                if result.returncode == 0:
+                    ollama_exe = "ollama"
+                    break
+            except Exception:
+                continue
+        elif os.path.exists(path):
+            ollama_exe = path
+            break
+
+    if not ollama_exe:
+        print("❌ [Ollama] Executable not found. Install from https://ollama.com")
+        return False
+
+    print(f"🔍 [Ollama] Found at: {ollama_exe}")
+    print("🚀 [Ollama] Launching background engine... (this may take up to 30s)")
+
+    # Launch detached — no stdin/stdout/stderr inheritance from Spyder
+    subprocess.Popen(
+        [ollama_exe, "serve"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    )
+
+    # Poll health endpoint until ready or timeout
+    TIMEOUT = 30
+    for i in range(TIMEOUT):
+        time.sleep(1)
+        if is_alive():
+            print(f"✅ [Ollama] Engine live after {i + 1}s.")
+            return True
+        dots = "." * ((i % 3) + 1)
+        print(f"   ⏳ Warming up{dots} ({i + 1}/{TIMEOUT}s)", end="\r")
+
+    print(f"\n❌ [Ollama] Did not respond within {TIMEOUT} seconds.")
+    return False
+
+
 async def initialize_ecosystem():
-    """
-    Boots up the autonomic nervous system and initializes the global state space.
-    """
     print("\n" + "="*70)
     print("🟢 PROJECT GENESIS: BIOMIMETIC AI ECOSYSTEM OPERATIONAL")
     print(f"📍 Location: Kalyan, Maharashtra | Date: August 2026")
     print("="*70)
-    
-    # 1. Boot up MCP and load tools
+
+    # --- OLLAMA GUARDIAN ---
+    if not ensure_ollama_running():
+        print("⚠️  Ollama is required for LLM queries. Proceeding without guarantee.")
+
     mcp_client = await bootstrap_mcp_tools()
-    
-    # 2. Instantiate Spinal Reflex Arc
     spinal_cord = ReflexRouter()
     
-    # 3. Initialize Global State Space (Bloodstream)
     initial_state: GenesisState = {
         "messages": [],
         "next_node": "Nexus",
         "user_profit_metric": 100.0,
         "active_permissions": {"internet_access": "Yellow", "execute_code": "Red"},
         "task_dag": [],
-        "meta_hand_cache": {} # Holds active tool pointers
+        "meta_hand_cache": {}
     }
     
     observer.log_thought_process("System", "Ecosystem Bootstrapped", "VRAM limits, state space, and reflex pathways initialized.")
     return spinal_cord, initial_state, mcp_client
 
+
 async def run_desktop_interface():
-    """
-    Interactive Desktop Command Shell for Project Genesis.
-    """
     spinal_cord, current_state, mcp_client = await initialize_ecosystem()
     
-    print("\n💡 Genesis Interface Ready. Type 'exit', 'quit', or 'stop' to shut down.\n")
-    
     while True:
+        print("\n💡 Genesis Interface Ready. Type 'exit', 'quit', or 'stop' to shut down.\n")
         try:
-            # 1. Capture Stimulus
             user_input = input("👤 [Human Operator] >>> ").strip()
-            
             if not user_input:
                 continue
                 
@@ -186,30 +285,24 @@ async def run_desktop_interface():
                 print("\n🛑 Genesis ecosystem safely hibernating. Goodbye, sir.\n")
                 break
             
-            # 2. Check Spinal Reflex Arc (0ms Latency Bypass)
             reflex_response = spinal_cord.evaluate(user_input)
-            
             if reflex_response:
                 if reflex_response == "COMMAND_FLUSH_MEMORY":
                     current_state["messages"] = []
                     print("\n⚡ [Spinal Reflex] Memory state flushed completely. Context window reset.\n")
                 else:
                     print(f"\n⚡ [Spinal Reflex Response] {reflex_response}\n")
-                continue # Skip expensive LLM processing
+                continue 
             
-            # 3. Append User Message to State
             from langchain_core.messages import HumanMessage
             current_state["messages"].append(HumanMessage(content=user_input))
             
-            # 4. Route Stimulus through Neural Graph (Nexus -> Coder/Thinker)
             final_state = process_stimulus(user_input, current_state)
             
-            # 5. Extract Final Verified Output
             if final_state.get("messages"):
                 last_message = final_state["messages"][-1]
                 print(f"\n🤖 [Genesis Organism Output]:\n{last_message.content}\n")
                 
-            # Update working state
             current_state = final_state
             
         except KeyboardInterrupt:
@@ -221,8 +314,21 @@ async def run_desktop_interface():
             print(f"\n❌ System Fault: {traceback.format_exc()}\n")
 
 if __name__ == "__main__":
-    # Windows-specific async loop policy fix
     if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        try:
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        except Exception:
+            pass # Fails gracefully if Spyder has already locked the policy
+            
+    # --- PERMANENT IDE/SPYDER ASYNCIO COLLISION FIX ---
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+        
+    if loop and loop.is_running():
+        print("🔄 Background Event Loop detected (Spyder Environment). Patching runtime...")
+        import nest_asyncio
+        nest_asyncio.apply()
         
     asyncio.run(run_desktop_interface())

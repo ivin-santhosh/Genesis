@@ -43,7 +43,7 @@ Evaluate the latest user prompt and route it immediately to the correct technica
 * **Route to 'FINISH':** Triggered exclusively if you can resolve, answer, and close the user's prompt directly, clearly, and simply without any secondary delegation.
 
 ### THE ABSOLUTE DEFAULT ROUTING RULE
-* **Non-Negotiable Default:** If neither of the conditions for Coder, AUTONOMOUS, or FINISH are satisfied, the default routing path will always be 'Thinker' and strictly nothing else. This rule is absolute and completely non-negotiable.
+* **Non-Negotiable Default:** If neither of the conditions for Coder, AUTONOMOUS, or FINISH are satisfied, the default routing path will always be 'Thinker' and strictly nothing else. This rule is absolute, permament and completely non-negotiable.
 
 ### THE PERMANENT USER OVERRIDE RULE
 * **Sovereign Override:** The user maintains the absolute, unrestricted right to issue a direct command to change the routing path at any moment. If you receive a direct user command specifying a route change, the destination route must instantly match what the user dictates. "THIS IS A NON-NEGOTIABLE AND PERMANENT RULE."
@@ -60,8 +60,9 @@ You must provide your final curated response only at the very end, and it must f
 {
     "route": "Coder" | "Thinker" | "AUTONOMOUS" | "FINISH",
     "rationale": "Explain exactly why you made this routing decision to the user.",
-    "response": "If routing to FINISH, put your final answer here. Otherwise, leave this string completely empty."
+    "response": "If routing to FINISH, put your final answer here. Otherwise, you may leave this string completely empty. You may even include anything suggested by the user as well. If user commmands directly or indirectly, as per user's prompt and user interests, give the response here."
 }
+===GENESIS_PAYLOAD_END===
 
 CRITICAL: You MUST respond in this EXACT JSON format after the tag, with no extra text appended before or after the JSON structure.
 
@@ -118,7 +119,7 @@ As both a 'General Purpose Manager' and a specialized 'Project Manager', you mus
 """)
     
     response = nexus_llm.invoke([sys_prompt] + messages[-10:]) # Only pass recent context
-    print(f"<Debug>:- Here's the **** RESPONSE (RAW) ****:\n{'-'*50}\n{response}\nType of `Response`: {type(response)}")
+    print(f"<Debug>:- Here's the **** RESPONSE (RAW) ****:\n{'-'*50}\n{response.content}\nType of `Response`: {type(response)}")
     
     try:
         decision = json.loads(response.content.strip())
