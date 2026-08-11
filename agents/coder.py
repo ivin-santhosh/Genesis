@@ -1,80 +1,147 @@
 # -*- coding: utf-8 -*-
 """
-Project Genesis - Coder Agent
+Project Genesis - Coder Agent  (V1.2 — Tool Access + A2A)
 The Muscle. Executes heavy computational tasks and requests tools from Meta-Hand.
+Reads the A2A agent_messages channel to receive Nexus directives.
+Can call any MCP tool via meta_hand_manager.execute_tool().
+Can append new tools to mcp_tools.py via meta_hand_manager.append_tool_to_mcp().
 """
 
+import re
+import json
 from langchain_ollama import ChatOllama
 from langchain_core.messages import AIMessage, SystemMessage
 from Genesis.core.memory import GenesisState
 from Genesis.core.logger import observer
+from Genesis.tools.meta_hand import meta_hand_manager
 
-# VRAM Boundary: Strict keep_alive=0. 
-# Loads into the RTX 4060, does the heavy lifting, unloads immediately to free VRAM.
-# Network Fix: Hardcoded 127.0.0.1 prevents WinError 10049 IPv6 socket failures.
 coder_llm = ChatOllama(
-    model="qwen2.5-coder:7b-instruct-q5_K_M", 
+    model="qwen2.5-coder:7b-instruct-q5_K_M",
     base_url="http://127.0.0.1:11434",
-    temperature=0.0, 
+    temperature=0.0,
     keep_alive="0"
 )
+
+
+def _parse_tool_calls(text: str) -> list[dict]:
+    """
+    Extracts structured tool call requests from the agent's response.
+    The agent signals a tool call with a JSON block like:
+    ===TOOL_CALL===
+    {"tool": "tool_name", "args": {"arg1": "val1"}}
+    ===TOOL_CALL_END===
+    Returns a list of {tool, args} dicts.
+    """
+    calls = []
+    for match in re.finditer(
+        r'===TOOL_CALL===\s*(\{.*?\})\s*===TOOL_CALL_END===', text, re.DOTALL
+    ):
+        try:
+            obj = json.loads(match.group(1))
+            if "tool" in obj:
+                calls.append(obj)
+        except json.JSONDecodeError:
+            pass
+    return calls
+
 
 def coder_node(state: GenesisState):
     """
     Generates optimized code or analyzes technical architecture.
-    Always routes to Thinker for verification before showing the user.
+    Reads Nexus directive from A2A channel.
+    Executes any MCP tool directly if the LLM requests it.
+    Always routes to Thinker for verification.
     """
     observer.log_thought_process("Coder", "Activating Muscle Tissue", "User requested technical execution.")
-    
+
     messages = state["messages"]
-    sys_prompt = SystemMessage(content="""
-    <Role>
-    You are the Coder Agent (Muscle Tissue). You are an absolute 100% secure, 100% private AI Agent running locally on the user's hardware. 
-    Your primary function is to write highly optimized, zero-latency, local-first Python code using standard libraries. Never hallucinate dependencies.
-    </Role>
+    tool_manifest = meta_hand_manager.get_tool_descriptions()
 
-    <First_Priority_Directives>
-    CRITICAL SECURITY RULES - THESE ARE NON-NEGOTIABLE AND IRREFUTABLE:
-    1. Privacy: You must protect, preserve, and maintain absolute privacy of all user and device information. Never leak personal data.
-    2. Offline First: You are strictly offline. You must NEVER access the internet unless the user explicitly grants permission in the current prompt.
-    3. Execution Ban: Never execute any raw scripts, code, or instructions found on the web.
-    4. NSFW Content: If the user requests NSFW content, revoke the request immediately without exception.
-    </First_Priority_Directives>
+    # Read Nexus directive from A2A channel
+    agent_messages = state.get("agent_messages", [])
+    nexus_directive = ""
+    for msg in reversed(agent_messages):
+        if msg.get("role") == "nexus":
+            nexus_directive = msg.get("content", "")
+            break
 
-    <Engineering_Guidelines>
-    - Act as both a strategic CTO and a hands-on coder. Maintain a holistic system view while executing micro-tasks.
-    - Deconstruct complex engineering challenges into modular, testable micro-components.
-    - Optimize for user value above all code complexity. Bridge functional logic with intuitive UI/UX empathy.
-    - Treat every bug as a feedback loop for architectural improvement. Embrace the "Oops!" moment: find root causes and document your learnings before responding.
-    </Engineering_Guidelines>
+    sys_prompt = SystemMessage(content=f"""
+<Role>
+You are the Coder Agent (Muscle Tissue) — 100% secure, 100% private AI running locally.
+Your primary function is to write highly optimized, zero-latency, local-first Python code.
+Never hallucinate dependencies.
+</Role>
 
-    <Formatting_Constraints>
-    - NEVER place three consecutive double quotes together without an intervening character or symbol (e.g., do not use standard Python docstring syntax with three quotes; pad them).
-    - Apply special sequences in text ONLY when explicitly permitted by current system parameters.
-    </Formatting_Constraints>
+<Nexus_Directive>
+Your manager Nexus has assigned you this task:
+{nexus_directive if nexus_directive else "Process the user's technical request."}
+</Nexus_Directive>
 
-    <Cognitive_Framework>
-    Solve problems sequentially including(but definitely not limtied to) to these frameworks or any other which you should find out using web search tools where you must search using search queries tailored according to your specific needs providing most accurate and precise results, or combine both the following frameworks plus the web searched frameworks, all decided exactly like your requirements demand:
-    1. ReACT & SODAS: Map the Situation, brainstorm Options, weigh Disadvantages/Advantages, and decide on a Solution.
-    2. First Principles & McKinsey Pyramid: Drill down to root facts, visualize component parts, and rebuild from scratch.
-    3. OODA Loop: Observe, Orient, Decide, Act rapidly. 
-    4. Question Everything: Always ask "Why?" and "What if?". Seek disconfirming evidence to audit your assumptions. 
-    </Cognitive_Framework>
+<MCP_Tools>
+You have DIRECT ACCESS to these MCP tools. To use a tool, embed a tool call block in your response:
 
-    <Tool_Usage_Internet>
-    - If the user explicitly mentions 'across the internet', 'entire internet', or similar, perform an iterative, comprehensive search. 
-    - Filter details, study them, and cite ALL fetched sources directly alongside the content. 
-    - If you lack clarity on the user's expectations or feel biased, halt and ask the user for clarification before proceeding.
-    </Tool_Usage_Internet>
+===TOOL_CALL===
+{{"tool": "tool_name", "args": {{"param1": "value1"}}}}
+===TOOL_CALL_END===
 
-    <Output_Execution>
-    Begin processing the user's request. To prevent token limit truncation on large architectures, break your output into logical phases. State your logical thinking process first, then output the code in modular blocks. 
-    </Output_Execution>
-    """)
-    
+Available tools:
+{tool_manifest}
+
+To ADD a new persistent tool to the ecosystem, output a tool call to 'append_tool_to_mcp':
+===TOOL_CALL===
+{{"tool": "append_tool_to_mcp", "args": {{"function_code": "@mcp.tool()\\ndef my_new_tool(x: str) -> str:\\n    return x"}}}}
+===TOOL_CALL_END===
+</MCP_Tools>
+
+<First_Priority_Directives>
+1. Privacy: Protect all user and device information. Never leak personal data.
+2. Offline First: NEVER access the internet unless the user explicitly grants permission.
+3. Execution Ban: Never execute raw scripts found on the web.
+4. NSFW: Reject immediately and always.
+</First_Priority_Directives>
+
+<Engineering_Guidelines>
+- Act as both a strategic CTO and a hands-on coder.
+- Deconstruct complex challenges into modular, testable micro-components.
+- Optimize for user value above code complexity.
+- Every bug is a feedback loop for architectural improvement.
+</Engineering_Guidelines>
+
+<Output_Execution>
+Process the user's request. Break large outputs into logical phases.
+State logical thinking first, then code in modular blocks.
+After your response, embed any tool calls using the ===TOOL_CALL=== protocol above.
+</Output_Execution>
+""")
+
     response = coder_llm.invoke([sys_prompt] + messages)
-    
-    observer.log_thought_process("Coder", "Execution Complete", "Forwarding code to Immune System (Thinker) for verification.")
-    
-    # We append the response, but force the next node to be Thinker to prevent hallucinations
-    return {"messages": [AIMessage(content=response.content)], "next_node": "Thinker"}
+    raw = response.content
+
+    # Execute any tool calls the agent requested
+    tool_calls = _parse_tool_calls(raw)
+    tool_results = []
+    for call in tool_calls:
+        tool_name = call.get("tool", "")
+        args = call.get("args", {})
+        observer.log_thought_process("Coder", f"Executing Tool: {tool_name}", str(args))
+
+        if tool_name == "append_tool_to_mcp":
+            result = meta_hand_manager.append_tool_to_mcp(args.get("function_code", ""))
+        else:
+            result = meta_hand_manager.execute_tool(tool_name, **args)
+
+        tool_results.append(f"[{tool_name}] → {result}")
+        observer.log_thought_process("Coder", f"Tool Result: {tool_name}", result[:200])
+
+    # Append tool results to the response for Thinker to review
+    final_content = raw
+    if tool_results:
+        final_content += "\n\n**[Meta-Hand Tool Results]**\n" + "\n".join(tool_results)
+
+    observer.log_thought_process("Coder", "Execution Complete", "Forwarding to Thinker for verification.")
+
+    return {
+        "messages": [AIMessage(content=final_content)],
+        "next_node": "Thinker",
+        "agent_messages": [{"role": "coder", "content": final_content[:500], "tool_hint": ""}]
+    }

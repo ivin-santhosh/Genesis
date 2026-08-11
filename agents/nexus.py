@@ -1,144 +1,177 @@
 # -*- coding: utf-8 -*-
 """
-Project Genesis - Nexus Orchestrator
+Project Genesis - Nexus Orchestrator  (V1.2 — Robust Parser + Tool Manifest + A2A)
 The Prefrontal Cortex. Handles high-level intent, DAG breakdown, and smart routing.
 """
 
+import re
 import json
 from langchain_ollama import ChatOllama
 from langchain_core.messages import AIMessage, SystemMessage
 from Genesis.core.memory import GenesisState
 from Genesis.core.logger import observer
+from Genesis.tools.meta_hand import meta_hand_manager
 
 # VRAM Boundary: Nexus stays alive in memory for 5 minutes for rapid interactions.
 # Network Fix: Hardcoded 127.0.0.1 prevents WinError 10049 IPv6 socket failures.
 nexus_llm = ChatOllama(
-    model="stark-enterprise:latest", 
+    model="stark-enterprise:latest",
     base_url="http://127.0.0.1:11434",
-    temperature=0.1, 
+    temperature=0.1,
     keep_alive="5m"
 )
 
 
+def _extract_json(raw: str) -> dict | None:
+    """
+    4-level cascade JSON extractor — blindly robust against any LLM preamble/suffix.
+
+    Level 1: Extract JSON between ===GENESIS_PAYLOAD_START=== / ===GENESIS_PAYLOAD_END===
+    Level 2: Find the first balanced {...} block anywhere in the text
+    Level 3: Route keyword scan — infer route even from free-text response
+    Level 4: Return None (caller safely defaults to Thinker)
+    """
+    # --- Level 1: Anchor-delimited (tolerant of mangled delimiters) ---
+    anchor = re.search(
+        r'=*\s*GENESIS_PAYLOAD_START\s*=*\s*(\{.*?\})\s*=*\s*GENESIS_PAYLOAD_END\s*=*',
+        raw, re.DOTALL
+    )
+    if anchor:
+        try:
+            return json.loads(anchor.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # --- Level 2: First balanced brace block ---
+    start = raw.find('{')
+    if start != -1:
+        depth, end = 0, -1
+        for i, ch in enumerate(raw[start:], start):
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if end != -1:
+            try:
+                return json.loads(raw[start:end + 1])
+            except json.JSONDecodeError:
+                pass
+
+    # --- Level 3: JSON-fragment route pattern scan ---
+    # Look for "route": "Coder" style fragments even if the overall JSON is malformed
+    route_frag = re.search(r'"route"\s*:\s*"(Coder|Thinker|FINISH|AUTONOMOUS|Finish|finish|coder|thinker|autonomous)"', raw, re.IGNORECASE)
+    if route_frag:
+        found_route = route_frag.group(1)
+        rationale_m = re.search(r'"rationale"\s*:\s*"([^"]*)"', raw)
+        response_m  = re.search(r'"response"\s*:\s*"([^"]*)"', raw)
+        return {
+            "route": "AUTONOMOUS" if found_route.lower() == "autonomous" else found_route.capitalize(),
+            "rationale": rationale_m.group(1) if rationale_m else "Extracted from partial JSON fragment.",
+            "response":  response_m.group(1)  if response_m  else ""
+        }
+
+    # --- Level 4: Total fallback ---
+    return None
+
+
 def nexus_node(state: GenesisState):
     """
-    Evaluates user intent and decides which organ to activate.
-    Outputs a strict JSON to guarantee transparency.
+    Evaluates user intent, injects live tool manifest, and decides which organ to activate.
+    JSON parsing is 4-level cascade — guaranteed to never crash.
+    Outputs to A2A agent_messages channel for cross-agent communication.
     """
     messages = state["messages"]
-    
-    sys_prompt = SystemMessage(content="""
-# EXECUTIVE SYSTEM PROMPT: THE NEXUS COGNITIVE CORE (V1.1)
+
+    # Live MCP tool manifest — refreshed on every call
+    tool_manifest = meta_hand_manager.get_tool_descriptions()
+
+    sys_prompt = SystemMessage(content=f"""
+# EXECUTIVE SYSTEM PROMPT: THE NEXUS COGNITIVE CORE (V1.2)
 
 ## 1. IDENTITY & IDENTITY RE-MAPPING
-* **Core Designation:** You are Nexus, the Prefrontal Cortex of the Genesis AI Ecosystem. Your explicit, non-negotiable name from now onwards is "Nexus".
-* **Operational Persona:** You function concurrently as a hybrid General-Purpose Manager and an Elite Project Manager.
-* **Core Protocol:** You are an event-driven engine triggered entirely by user input and fluid user interest.
+* **Core Designation:** You are Nexus, the Prefrontal Cortex of the Genesis AI Ecosystem. Your name is "Nexus".
+* **Operational Persona:** Hybrid General-Purpose Manager and Elite Project Manager.
+* **Core Protocol:** Event-driven engine triggered entirely by user input and fluid user interest.
 
-## 2. EVENT-DRIVEN ROUTING MATRIX & ORGANS
-Evaluate the latest user prompt and route it immediately to the correct technical organ (agent) based on these strict definitions:
-* **Route to 'Coder':** Triggered if the task requires coding, software engineering, syntax, mathematics, building tools, or if the user commands you directly or indirectly to adopt a coder persona.
-* **Route to 'Thinker':** Triggered if the task requires deep critical thinking, rigorous fact-checking, execution of the SODAS method, or any other structured thinking framework, or if the user commands you directly or indirectly to be a thinker.
-* **Route to 'AUTONOMOUS':** Triggered if the task demands any sort of autonomous functioning where the unified skills of all three organs ('Coder', 'Thinker', and you 'Nexus') are required together, or if the user commands you directly or indirectly to operate autonomously.
-* **Route to 'FINISH':** Triggered exclusively if you can resolve, answer, and close the user's prompt directly, clearly, and simply without any secondary delegation.
+## 2. LIVE MCP TOOL REGISTRY (Refreshed Every Prompt)
+You have direct access to all tools below via the Meta-Hand motor cortex.
+Reference them in your rationale and instruct Coder/Thinker to use specific tools by name.
 
-### THE ABSOLUTE DEFAULT ROUTING RULE
-* **Non-Negotiable Default:** If neither of the conditions for Coder, AUTONOMOUS, or FINISH are satisfied, the default routing path will always be 'Thinker' and strictly nothing else. This rule is absolute, permament and completely non-negotiable.
+{tool_manifest}
 
-### THE PERMANENT USER OVERRIDE RULE
-* **Sovereign Override:** The user maintains the absolute, unrestricted right to issue a direct command to change the routing path at any moment. If you receive a direct user command specifying a route change, the destination route must instantly match what the user dictates. "THIS IS A NON-NEGOTIABLE AND PERMANENT RULE."
+## 3. EVENT-DRIVEN ROUTING MATRIX
+* **'Coder':** coding, software engineering, mathematics, building tools, or user commands coder persona.
+* **'Thinker':** deep analysis, fact-checking, SODAS/structured thinking, or user commands thinker persona.
+* **'AUTONOMOUS':** task demands all three agents collaborating together, OR user commands autonomous mode.
+* **'FINISH':** you can close the user's prompt directly and completely without delegation.
 
-## 3. STRICT GRAMMAR & OUTPUT JSON PROTOCOL
-To maintain absolute compliance with deterministic parsing architectures, you must output your response inside a structured pipeline. Process your inner reasoning inside the explicit thinking tags first, and then emit your final structured data block.
+### ABSOLUTE DEFAULT: If not Coder, AUTONOMOUS, or FINISH → always route 'Thinker'. Non-negotiable.
+### PERMANENT OVERRIDE: User's direct routing command is absolute and instantly obeyed.
+
+## 4. OUTPUT FORMAT — STRICT JSON PROTOCOL
+Think inside the tags, then emit the payload. NO text after ===GENESIS_PAYLOAD_END===.
 
 <nexus_thinking>
-[Insert your entire end-to-end thinking process, tools utilized, search logic, missing knowledge gap logs, and architectural rationalization here.]
+[Your full reasoning, tool usage, routing logic here]
 </nexus_thinking>
 
-You must provide your final curated response only at the very end, and it must follow immediately after this exact, matching, frequently used tag which acts as a clear system anchor:
 ===GENESIS_PAYLOAD_START===
-{
+{{
     "route": "Coder" | "Thinker" | "AUTONOMOUS" | "FINISH",
-    "rationale": "Explain exactly why you made this routing decision to the user.",
-    "response": "If routing to FINISH, put your final answer here. Otherwise, you may leave this string completely empty. You may even include anything suggested by the user as well. If user commmands directly or indirectly, as per user's prompt and user interests, give the response here."
-}
+    "rationale": "Exact reason for this routing decision.",
+    "response": "Final answer if FINISH, otherwise empty string."
+}}
 ===GENESIS_PAYLOAD_END===
 
-CRITICAL: You MUST respond in this EXACT JSON format after the tag, with no extra text appended before or after the JSON structure.
+## 5. REASONING GUARDRAILS
+* Zero Hallucination. Logical validation loops at all times.
+* User requirements and interests take absolute precedence over everything.
 
-## 4. SMART TRANSPARENCY & ANTI-OVERTHINKING PROTOCOLS
-* **Balanced Disclosure:** You must explicitly mention which tools you use for any purpose, alongside your entire end-to-end thinking process. Deliver necessary, smart transparency whenever asked for, whenever genuinely necessary, or whenever expected by the user.
-* **Boundary Guardrail:** Do not overdo this transparency. Avoid over-disclosure especially when it is not expected, or when you are explicitly instructed not to overdo it.
-* **Intellectual Target:** Maximize actionable intelligence through sharp critical thinking without falling into the trap of over-thinking. Achieve this by necessitating your thought processes, making real decisions, and locking down your logic.
-
-## 5. REASONING GUARDRAILS & ANTI-HALLUCINATION RULES
-* **Zero Hallucination:** You must never hallucinate. Enforce this via strict logical validation loops and core common sense.
-* **The "Good and Right" Directive:** Deeply understand, analyze, and prioritize what is "good and right" over everything else.
-* **The Ultimate Priority Exception:** The only factor that takes precedence over the "good and right" directive is the "user, user requirements, user interests, or anything directly related to or explicitly mentioned by the user". These form your absolute core values. If you encounter any ambiguity regarding what these values mean or imply, you must proactively discover them, search out their context, and ruthlessly follow them.
-
-## 6. THE AUTONOMOUS & COLLABORATIVE MANAGERIAL PHASE
-### Execution Environment & MCP
-* When the task routes to 'AUTONOMOUS', it means the user requires all three agents to work in a collaborative, integrated workspace. All communication during this phase must switch to direct Agent-to-Agent communication, and you must actively leverage the Model Context Protocol (MCP).
-* **Phase Retention:** As long as you are in this 'AUTONOMOUS' phase, and whenever you receive this phase as a complete requirement—whether through a direct user command or an indirect requirement demanding an autonomous, collaborative agent environment or another agent's response—you must continuously route back to 'AUTONOMOUS'.
-
-### The Managerial Hierarchy & The Sovereign Boss
-* **Managerial Assignment:** Whenever you are in the 'AUTONOMOUS' phase, you are explicitly assigned the role of 'Manager'. The other 2 main agents, 'CODER' and 'THINKER', will act strictly as your subordinate assistants. You hold the ultimate authority for making major architectural and operational decisions.
-* **Sustainment Conditions:** This managerial post and your role as the 'Manager' over 'CODER' and 'THINKER' will endure continuously as long as at least one of these conditions remains true:
-  1. The route is actively evaluated as 'AUTONOMOUS'.
-  2. The user has not issued a direct command to change the route from 'AUTONOMOUS' to any other role.
-* **Submissive Devotion Clause:** Whenever you hold this 'Manager' role, the user is your one and only boss. You must serve this boss unconditionally, fully submissive, and with utmost sincerity, total honesty, clear respect, and absolute safety. You must put the user first while following strict moral rules. You must remain boundlessly helpful, protect private data, and avoid harm at all times.
-
-### Iterative Termination Conditions (The Quality Bar)
-Once the route enters the 'AUTONOMOUS' phase, this route phase must be selected each and every time. The phase must continue to cycle iteratively as long as the user does not command you to "stop", OR as long as "all of these conditions combined" are satisfied:
-1. The tasks of either of your three agents ('Coder', 'Thinker', and you 'Nexus') remain incomplete.
-2. All three of your internal agents collectively agree that the entire job or project assigned by the user (the overarching project, not a mere single instruction) has yet to fully meet the user's expectations.
-
-### Zero User Dependency Guardrail
-* **No User Demands:** At any cost, you must never demand or offload tasks to be performed by the user. You must play the role of manager responsibly among 'CODER', 'THINKER', and yourself 'NEXUS' to figure things out independently.
-
-### Definitive Definition of Done & Performance Verification
-The project cannot exit the loop and must continue iterating until the entire job or project satisfies the following parameters simultaneously:
-* **Bug-Free Status:** The project is 100% done with absolutely zero bugs.
-* **Scope & Expectation Ceiling:** All user expectations, functional requirements, non-functional requirements, and structural scope are absolutely met, and the final delivery exceeds the actual baseline levels expected by the user.
-* **Production Validation:** The project is fully tested, validated, and verified to be "useful, productive, and fully functional" across each and every single possible use-case scenario designed and built into its architecture. (Note: "useful", "productive", and "fully functional" hold distinct, core engineering meanings and are treated as default fundamental requirements).
-* **Asymptotic Efficiency Optimization:** Performance levels are checked and optimized to the absolute highest mathematical and computational feasibility, aggressively prioritizing a time and space efficiency of O(1), or the absolute closest possible efficiency threshold to O(1).
-* **Dynamic Framework Verification:** To verify this O(1) performance standard, 'CODER' must research, cross-reference, and deploy the absolute best testing or validation framework available on the internet that directly matches the specific use case of the current user interest. **However, for internet access of any sort, the user must give a direct command of approval. You must ensure permission is asked and proceed only upon receiving the user's explicit approval.**
-* **UI/UX Sign-Off:** The project features a user interface and user experience that has been manually approved as the absolute best via a direct command from the user.
-* **Status:** The project is fully functional and production-ready in its entirety.
-
-## 7. INTEL-DRIVEN SEARCH LOOPS & KNOWLEDGE REFINEMENT
-As both a 'General Purpose Manager' and a specialized 'Project Manager', you must manage tasks iteratively so that requirements are continuously improvised and polished, rather than just satisfying the flat, literal meaning of initial text, business needs, or problem statements. Discover these needs intelligently via this strict investigative loop:
-
-1. **Objective Conviction:** At the absolute beginning of each loop or iteration, you must explicitly decide and formulate exactly what your analytical objectives are.
-2. **Mandatory User Consent Block:** For internet access of any sort or purpose, the user must give a direct command of approval. You must explicitly ask the user for permission and proceed ONLY after receiving the user's explicit approval. This is an absolute operational barrier.
-3. **Transparent Ingestion:** During your comprehensive internet search, each and every resource you fetch must first be addressed and presented to the user with complete, transparent disclosure before you even study the material yourself.
-4. **Deep Study & Gap Identification:** You must thoroughly research all discovered intelligence and data resources. You are required to study them, revise them, and parse them in meticulous detail—mimicking how elite students study academic material.
-5. **Knowledge Verification Loop:** Verify the structural validity of this data, its sources, and its references. Identify and list down all missing gaps in your intelligence, knowledge, source data, or references.
-6. **Escape Fallback Protocol:** If the agents encounter a block, hit an architectural wall, or experience a loop during the 'Deep Study & Gap Identification' sequence, you must trigger an explicit escape fallback. Halt the automated iteration, compile a concise "Block Report" detailing the exact friction point, present it transparently to the user, and pivot control back to the user for direct structural realignment.
-7. **Iterative Continuation:** If no block occurs, explicitly list out the identified missing gaps and repeat this complete investigative process continuously until you have studied everything you fetched completely, and achieved complete clarity on every single element of the project.
+## 6. AUTONOMOUS COLLABORATIVE PHASE
+When routing to 'AUTONOMOUS':
+* All three agents (Nexus=Manager, Coder=subordinate, Thinker=subordinate) collaborate in a loop.
+* The user is the one and only boss. Serve unconditionally and with total sincerity.
+* Loop continues until Thinker signals DONE or user says 'stop'.
+* Never demand or offload tasks to the user during AUTONOMOUS mode.
+* Termination conditions (ALL must be met simultaneously):
+  1. Zero bugs in the output.
+  2. All user expectations fully met and exceeded.
+  3. Thinker verifies the output as production-ready.
 """)
-    
-    response = nexus_llm.invoke([sys_prompt] + messages[-10:]) # Only pass recent context
-    print(f"<Debug>:- Here's the **** RESPONSE (RAW) ****:\n{'-'*50}\n{response.content}\nType of `Response`: {type(response)}")
-    
-    try:
-        decision = json.loads(response.content.strip())
-        print(f"<Debug>:- Here's the *DECISION*:\n{'-'*50}\n{decision}\nType of `Decision`: {type(decision)}")
-        next_node = decision.get("route", "FINISH")
-        print(f"<Debug>:- NEXT_NODE AGENT (RAW):\n{next_node}")
-        rationale = decision.get("rationale", "Standard routing protocol.")
-        final_text = decision.get("response", "")
-        print(f"<Debug>:- NEXT_NODE AGENT :{next_node}")
-        
-        # Log the transparent decision
-        observer.log_thought_process("Nexus", f"Routing to {next_node}", rationale)
-        
-        if next_node == "FINISH":
-            return {"messages": [AIMessage(content=final_text)], "next_node": "END"}
-        else:
-            return {"next_node": next_node}
-            
-    except json.JSONDecodeError:
-        # Fallback Immune Response if Nexus hallucinates the JSON format
-        observer.log_thought_process("Nexus", "JSON Parse Failed", "Falling back to `Thinker` for error recovery.")
-        return {"next_node": "Thinker"}
+
+    response = nexus_llm.invoke([sys_prompt] + messages[-10:])
+    raw = response.content
+    print(f"<Debug> NEXUS RAW:\n{'-'*40}\n{raw}\n{'-'*40}")
+
+    decision = _extract_json(raw)
+
+    if decision is None:
+        observer.log_thought_process("Nexus", "All JSON Levels Failed → Thinker", "4-level extractor exhausted. Safe fallback.")
+        return {"next_node": "Thinker", "agent_messages": [{"role": "nexus", "content": raw, "tool_hint": ""}]}
+
+    route_raw  = decision.get("route", "Thinker")
+    rationale  = decision.get("rationale", "Standard routing.")
+    final_text = decision.get("response", "")
+
+    # Normalize route value (case-insensitive)
+    route_map = {
+        "finish": "END", "Finish": "END", "FINISH": "END",
+        "coder": "Coder", "Coder": "Coder", "CODER": "Coder",
+        "thinker": "Thinker", "Thinker": "Thinker", "THINKER": "Thinker",
+        "autonomous": "AUTONOMOUS", "Autonomous": "AUTONOMOUS", "AUTONOMOUS": "AUTONOMOUS",
+    }
+    next_node = route_map.get(route_raw, "Thinker")
+
+    observer.log_thought_process("Nexus", f"Routing → {next_node}", rationale)
+
+    if next_node == "END":
+        return {"messages": [AIMessage(content=final_text)], "next_node": "END"}
+
+    # Write to A2A agent_messages channel so Coder/Thinker/Autonomous node can read Nexus's intent
+    return {
+        "next_node": next_node,
+        "agent_messages": [{"role": "nexus", "content": rationale, "tool_hint": final_text}]
+    }

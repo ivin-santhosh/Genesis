@@ -110,7 +110,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Genesis.core.memory import GenesisState
 from Genesis.core.routing import ReflexRouter
 from Genesis.core.logger import observer
-from Genesis.core.graph import process_stimulus
+from Genesis.core.graph import process_stimulus, set_mcp_client
 from Genesis.tools.meta_hand import meta_hand_manager
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -255,6 +255,8 @@ async def initialize_ecosystem():
         print("⚠️  Ollama is required for LLM queries. Proceeding without guarantee.")
 
     mcp_client = await bootstrap_mcp_tools()
+    # Wire the MCP client into graph.py's reload engine so tools are re-scanned every prompt
+    set_mcp_client(mcp_client)
     spinal_cord = ReflexRouter()
     
     initial_state: GenesisState = {
@@ -263,7 +265,9 @@ async def initialize_ecosystem():
         "user_profit_metric": 100.0,
         "active_permissions": {"internet_access": "Yellow", "execute_code": "Red"},
         "task_dag": [],
-        "meta_hand_cache": {}
+        "meta_hand_cache": {},
+        "agent_messages": [],
+        "autonomous_iteration_count": 0
     }
     
     observer.log_thought_process("System", "Ecosystem Bootstrapped", "VRAM limits, state space, and reflex pathways initialized.")

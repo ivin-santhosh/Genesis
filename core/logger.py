@@ -23,7 +23,11 @@ class NervousSystemLogger:
             "Nexus": "🧠 [Prefrontal Cortex]",
             "Coder": "💪 [Muscle Tissue]",
             "Thinker": "🩸 [Immune/Verification]",
-            "Meta-Hand": "🧬 [Motor Cortex]"
+            "Meta-Hand": "🧬 [Motor Cortex]",
+            "AUTONOMOUS": "🤝 [A2A Swarm]",
+            "AUTONOMOUS:Nexus": "🤝🧠 [Swarm:Manager]",
+            "AUTONOMOUS:Coder": "🤝💪 [Swarm:Executor]",
+            "AUTONOMOUS:Thinker": "🤝🩸 [Swarm:Verifier]"
         }
         icon = icons.get(organ, "⚙️ [System]")
         
@@ -42,7 +46,9 @@ class NervousSystemLogger:
             "node": node_name,
             "next_node": state.get("next_node", "UNKNOWN"),
             "messages_count": len(state.get("messages", [])),
-            "latest_message": state["messages"][-1].content if state.get("messages") else ""
+            "agent_messages_count": len(state.get("agent_messages", [])),
+            "autonomous_iteration": state.get("autonomous_iteration_count", 0),
+            "latest_message": state["messages"][-1].content[:500] if state.get("messages") else ""
         }
         
         with open(self.log_file, "a", encoding="utf-8") as f:

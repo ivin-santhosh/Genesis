@@ -19,10 +19,15 @@ class GenesisState(TypedDict):
     """
     messages: Annotated[Sequence[BaseMessage], operator.add]
     next_node: str
-    user_profit_metric: float # Tracks economic/time optimization
-    active_permissions: Dict[str, str] # Smart Permission Ledger (Green, Yellow, Red)
-    task_dag: List[Dict[str, Any]] # Directed Acyclic Graph of current tasks
-    meta_hand_cache: Dict[str, Any] # O(1) Tool retrieval cache
+    user_profit_metric: float           # Tracks economic/time optimization
+    active_permissions: Dict[str, str]  # Smart Permission Ledger (Green, Yellow, Red)
+    task_dag: List[Dict[str, Any]]      # Directed Acyclic Graph of current tasks
+    meta_hand_cache: Dict[str, Any]     # O(1) Tool retrieval cache
+    # A2A Communication Channel: append-only message bus between agents
+    agent_messages: Annotated[List[Dict[str, Any]], operator.add]
+    # Autonomous mode iteration counter (reset per user prompt)
+    autonomous_iteration_count: int
+
 
 class ContextCompressor:
     """
