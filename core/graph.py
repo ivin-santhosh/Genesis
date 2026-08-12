@@ -101,19 +101,22 @@ nexus_llm_auto = ChatOllama(
     model="stark-enterprise:latest",
     base_url="http://127.0.0.1:11434",
     temperature=0.1,
-    keep_alive="5m"
+    keep_alive="0",
+    num_gpu=99
 )
 coder_llm_auto = ChatOllama(
     model="qwen2.5-coder:7b-instruct-q5_K_M",
     base_url="http://127.0.0.1:11434",
     temperature=0.0,
-    keep_alive="0"
+    keep_alive="0",
+    num_gpu=99
 )
 thinker_llm_auto = ChatOllama(
     model="qwen3:4b",
     base_url="http://127.0.0.1:11434",
     temperature=0.2,
-    keep_alive="0"
+    keep_alive="0",
+    num_gpu=99
 )
 
 

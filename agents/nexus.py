@@ -18,7 +18,8 @@ nexus_llm = ChatOllama(
     model="stark-enterprise:latest",
     base_url="http://127.0.0.1:11434",
     temperature=0.1,
-    keep_alive="5m"
+    keep_alive="0",
+    num_gpu=99
 )
 
 

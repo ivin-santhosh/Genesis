@@ -19,7 +19,8 @@ thinker_llm = ChatOllama(
     model="qwen3:4b",
     base_url="http://127.0.0.1:11434",
     temperature=0.2,
-    keep_alive="0"
+    keep_alive="0",
+    num_gpu=99
 )
 
 
@@ -49,7 +50,8 @@ def thinker_node(state: GenesisState):
     observer.log_thought_process("Thinker", "Analyzing Context", "Applying First Principles to verify accuracy and prevent hallucinations.")
 
     messages = state["messages"]
-    tool_manifest = meta_hand_manager.get_tool_descriptions()
+    tool_count = len(meta_hand_manager.registry)
+    tool_names = ", ".join(meta_hand_manager.registry.keys())
 
     # Read full A2A context
     agent_messages = state.get("agent_messages", [])
@@ -69,14 +71,8 @@ Agent communication in this cycle so far:
 </A2A_Context>
 
 <MCP_Tools>
-You have DIRECT ACCESS to these MCP tools. Use the same protocol as Coder:
-
-===TOOL_CALL===
-{{"tool": "tool_name", "args": {{"param1": "value1"}}}}
-===TOOL_CALL_END===
-
-Available tools:
-{tool_manifest}
+You have access to {tool_count} MCP tools: {tool_names}
+To use any, embed: ===TOOL_CALL=== {{"tool": "name", "args": {{}}}} ===TOOL_CALL_END===
 </MCP_Tools>
 
 <Your_Mission>
@@ -112,7 +108,7 @@ Otherwise set "CONTINUE".
 Begin processing.
 """)
 
-    response = thinker_llm.invoke([sys_prompt] + messages)
+    response = thinker_llm.invoke([sys_prompt] + messages[-8:])
     raw = response.content
 
     # Execute any tool calls the Thinker requested

@@ -19,7 +19,8 @@ coder_llm = ChatOllama(
     model="qwen2.5-coder:7b-instruct-q5_K_M",
     base_url="http://127.0.0.1:11434",
     temperature=0.0,
-    keep_alive="0"
+    keep_alive="0",
+    num_gpu=99
 )
 
 
@@ -114,7 +115,7 @@ After your response, embed any tool calls using the ===TOOL_CALL=== protocol abo
 </Output_Execution>
 """)
 
-    response = coder_llm.invoke([sys_prompt] + messages)
+    response = coder_llm.invoke([sys_prompt] + messages[-8:])
     raw = response.content
 
     # Execute any tool calls the agent requested

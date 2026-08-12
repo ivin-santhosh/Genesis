@@ -6,6 +6,10 @@ import subprocess
 import asyncio
 import warnings
 
+# GPU-First: Flash attention for speed + single-request mode to prevent VRAM thrashing
+os.environ.setdefault("OLLAMA_FLASH_ATTENTION", "1")
+os.environ.setdefault("OLLAMA_NUM_PARALLEL", "1")
+
 # =========================================================
 # THE SPYDER IDE "FILENO" MASTER PATCH
 # =========================================================
@@ -67,7 +71,7 @@ def secure_system_bootstrap():
     packages = [
         "langchain", "langchain-ollama", "langchain-core", 
         "langgraph", "duckduckgo-search", "langchain-mcp-adapters",
-        "requests", "mcp<2", "urllib3", "pywin32", "nest-asyncio"
+        "requests", "mcp<2", "urllib3", "pywin32", "nest-asyncio", "rich"
     ]
     
     for pkg in packages:
@@ -112,6 +116,7 @@ from Genesis.core.routing import ReflexRouter
 from Genesis.core.logger import observer
 from Genesis.core.graph import process_stimulus, set_mcp_client
 from Genesis.tools.meta_hand import meta_hand_manager
+from Genesis.core.renderer import render_ai_response, render_banner
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 async def bootstrap_mcp_tools():
@@ -245,10 +250,7 @@ def ensure_ollama_running() -> bool:
 
 
 async def initialize_ecosystem():
-    print("\n" + "="*70)
-    print("🟢 PROJECT GENESIS: BIOMIMETIC AI ECOSYSTEM OPERATIONAL")
-    print(f"📍 Location: Kalyan, Maharashtra | Date: August 2026")
-    print("="*70)
+    render_banner("🟢 PROJECT GENESIS: BIOMIMETIC AI ECOSYSTEM OPERATIONAL\n📍 Location: Kalyan, Maharashtra | Date: August 2026")
 
     # --- OLLAMA GUARDIAN ---
     if not ensure_ollama_running():
@@ -305,7 +307,7 @@ async def run_desktop_interface():
             
             if final_state.get("messages"):
                 last_message = final_state["messages"][-1]
-                print(f"\n🤖 [Genesis Organism Output]:\n{last_message.content}\n")
+                render_ai_response(last_message.content)
                 
             current_state = final_state
             

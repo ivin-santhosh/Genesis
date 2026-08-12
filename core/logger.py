@@ -8,6 +8,7 @@ Logs all state changes for backpropagation and debugging.
 import json
 from datetime import datetime
 from typing import Any, Dict
+from Genesis.core.renderer import render_system_event
 
 class NervousSystemLogger:
     """
@@ -31,8 +32,7 @@ class NervousSystemLogger:
         }
         icon = icons.get(organ, "⚙️ [System]")
         
-        print(f"\n{icon} Action: {action}")
-        print(f"   ↳ Rationale: {rationale}")
+        render_system_event(icon, action, rationale)
         
     def save_state_trace(self, state: Dict[str, Any], node_name: str):
         """
