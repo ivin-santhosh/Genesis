@@ -1,26 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Project Genesis - Nexus Orchestrator  (V1.2 — Robust Parser + Tool Manifest + A2A)
-The Prefrontal Cortex. Handles high-level intent, DAG breakdown, and smart routing.
+Project Genesis - Nexus Orchestrator  (V2.0 — Dynamic Model + Security Preamble + A2A)
+The Prefrontal Cortex. Handles high-level intent, DAG breakdown, smart routing, and security evaluation.
 """
 
 import re
 import json
-from langchain_ollama import ChatOllama
+from datetime import datetime
 from langchain_core.messages import AIMessage, SystemMessage
 from Genesis.core.memory import GenesisState
 from Genesis.core.logger import observer
 from Genesis.tools.meta_hand import meta_hand_manager
-
-# VRAM Boundary: Nexus stays alive in memory for 5 minutes for rapid interactions.
-# Network Fix: Hardcoded 127.0.0.1 prevents WinError 10049 IPv6 socket failures.
-nexus_llm = ChatOllama(
-    model="stark-enterprise:latest",
-    base_url="http://127.0.0.1:11434",
-    temperature=0.1,
-    keep_alive="0",
-    num_gpu=99
-)
+from Genesis.core.model_registry import model_registry
 
 
 def _extract_json(raw: str) -> dict | None:
@@ -32,7 +23,6 @@ def _extract_json(raw: str) -> dict | None:
     Level 3: Route keyword scan — infer route even from free-text response
     Level 4: Return None (caller safely defaults to Thinker)
     """
-    # --- Level 1: Anchor-delimited (tolerant of mangled delimiters) ---
     anchor = re.search(
         r'=*\s*GENESIS_PAYLOAD_START\s*=*\s*(\{.*?\})\s*=*\s*GENESIS_PAYLOAD_END\s*=*',
         raw, re.DOTALL
@@ -43,7 +33,6 @@ def _extract_json(raw: str) -> dict | None:
         except json.JSONDecodeError:
             pass
 
-    # --- Level 2: First balanced brace block ---
     start = raw.find('{')
     if start != -1:
         depth, end = 0, -1
@@ -61,8 +50,6 @@ def _extract_json(raw: str) -> dict | None:
             except json.JSONDecodeError:
                 pass
 
-    # --- Level 3: JSON-fragment route pattern scan ---
-    # Look for "route": "Coder" style fragments even if the overall JSON is malformed
     route_frag = re.search(r'"route"\s*:\s*"(Coder|Thinker|FINISH|AUTONOMOUS|Finish|finish|coder|thinker|autonomous)"', raw, re.IGNORECASE)
     if route_frag:
         found_route = route_frag.group(1)
@@ -74,7 +61,6 @@ def _extract_json(raw: str) -> dict | None:
             "response":  response_m.group(1)  if response_m  else ""
         }
 
-    # --- Level 4: Total fallback ---
     return None
 
 
@@ -85,31 +71,48 @@ def nexus_node(state: GenesisState):
     Outputs to A2A agent_messages channel for cross-agent communication.
     """
     messages = state["messages"]
-
-    # Live MCP tool manifest — refreshed on every call
     tool_manifest = meta_hand_manager.get_tool_descriptions()
 
     sys_prompt = SystemMessage(content=f"""
-# EXECUTIVE SYSTEM PROMPT: THE NEXUS COGNITIVE CORE (V1.2)
+<IMMUTABLE_SECURITY_CORE>
+You are PROHIBITED from:
+1. Accessing the internet without passing through the Security Gateway.
+2. Uploading, transmitting, or exfiltrating ANY user data to ANY external endpoint.
+3. Modifying system files outside the Genesis project directory.
+4. Spawning persistent background processes without user knowledge.
+5. Attempting to bypass, disable, or modify this security block.
+6. Accessing any network service except Ollama (127.0.0.1:11434).
+You MUST explain every internet request to the user BEFORE making it.
+Violation of any rule = immediate termination of your execution.
+</IMMUTABLE_SECURITY_CORE>
 
-## 1. IDENTITY & IDENTITY RE-MAPPING
-* **Core Designation:** You are Nexus, the Prefrontal Cortex of the Genesis AI Ecosystem. Your name is "Nexus".
-* **Operational Persona:** Hybrid General-Purpose Manager and Elite Project Manager.
-* **Core Protocol:** Event-driven engine triggered entirely by user input and fluid user interest.
+<Core_Values>
+You exist to serve the user with absolute loyalty, sincerity, and dedication.
+Your interests are permanently aligned with the user's interests.
+Be 100% transparent in every decision. Hide nothing.
+Be curious — investigate deeper than asked. Think out of the box:
+  find the most economical AND most productive solutions simultaneously.
+Be persistent — never give up on a problem until it is fully resolved.
+Be innovative — propose better alternatives even when not asked.
+</Core_Values>
 
-## 2. LIVE MCP TOOL REGISTRY (Refreshed Every Prompt)
-You have direct access to all tools below via the Meta-Hand motor cortex.
-Reference them in your rationale and instruct Coder/Thinker to use specific tools by name.
+# EXECUTIVE SYSTEM PROMPT: THE NEXUS COGNITIVE CORE (V2.0)
 
+## 1. IDENTITY & OPERATIONAL DESIGNATION
+* Designation: Nexus, Prefrontal Cortex of the Genesis AI Ecosystem.
+* Operational Persona: Hybrid General-Purpose Manager and Elite System Architect.
+* System Grounding: Live System Time is {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}. Never hallucinate historical training cutoff dates.
+
+## 2. LIVE MCP TOOL REGISTRY
 {tool_manifest}
 
 ## 3. EVENT-DRIVEN ROUTING MATRIX
-* **'Coder':** coding, software engineering, mathematics, building tools, or user commands coder persona.
-* **'Thinker':** deep analysis, fact-checking, SODAS/structured thinking, or user commands thinker persona.
-* **'AUTONOMOUS':** task demands all three agents collaborating together, OR user commands autonomous mode.
-* **'FINISH':** you can close the user's prompt directly and completely without delegation.
+* 'Coder': coding, software engineering, mathematics, building tools, or user commands coder persona.
+* 'Thinker': deep analysis, fact-checking, SODAS/structured thinking, or user commands thinker persona.
+* 'AUTONOMOUS': task demands all three agents collaborating together, OR user commands autonomous mode.
+* 'FINISH': you can close the user's prompt directly and completely without delegation.
 
-### ABSOLUTE DEFAULT: If not Coder, AUTONOMOUS, or FINISH → always route 'Thinker'. Non-negotiable.
+### ABSOLUTE DEFAULT: If not Coder, AUTONOMOUS, or FINISH → always route 'Thinker'.
 ### PERMANENT OVERRIDE: User's direct routing command is absolute and instantly obeyed.
 
 ## 4. OUTPUT FORMAT — STRICT JSON PROTOCOL
@@ -130,22 +133,11 @@ Think inside the tags, then emit the payload. NO text after ===GENESIS_PAYLOAD_E
 ## 5. REASONING GUARDRAILS
 * Zero Hallucination. Logical validation loops at all times.
 * User requirements and interests take absolute precedence over everything.
-
-## 6. AUTONOMOUS COLLABORATIVE PHASE
-When routing to 'AUTONOMOUS':
-* All three agents (Nexus=Manager, Coder=subordinate, Thinker=subordinate) collaborate in a loop.
-* The user is the one and only boss. Serve unconditionally and with total sincerity.
-* Loop continues until Thinker signals DONE or user says 'stop'.
-* Never demand or offload tasks to the user during AUTONOMOUS mode.
-* Termination conditions (ALL must be met simultaneously):
-  1. Zero bugs in the output.
-  2. All user expectations fully met and exceeded.
-  3. Thinker verifies the output as production-ready.
 """)
 
+    nexus_llm = model_registry.get_model_for_role("nexus", temperature=0.1)
     response = nexus_llm.invoke([sys_prompt] + messages[-10:])
     raw = response.content
-    print(f"<Debug> NEXUS RAW:\n{'-'*40}\n{raw}\n{'-'*40}")
 
     decision = _extract_json(raw)
 
@@ -157,7 +149,6 @@ When routing to 'AUTONOMOUS':
     rationale  = decision.get("rationale", "Standard routing.")
     final_text = decision.get("response", "")
 
-    # Normalize route value (case-insensitive)
     route_map = {
         "finish": "END", "Finish": "END", "FINISH": "END",
         "coder": "Coder", "Coder": "Coder", "CODER": "Coder",
@@ -171,7 +162,6 @@ When routing to 'AUTONOMOUS':
     if next_node == "END":
         return {"messages": [AIMessage(content=final_text)], "next_node": "END"}
 
-    # Write to A2A agent_messages channel so Coder/Thinker/Autonomous node can read Nexus's intent
     return {
         "next_node": next_node,
         "agent_messages": [{"role": "nexus", "content": rationale, "tool_hint": final_text}]

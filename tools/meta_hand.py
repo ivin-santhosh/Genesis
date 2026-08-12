@@ -96,7 +96,7 @@ class MetaHand:
     def execute_tool(self, tool_name: str, **kwargs) -> str:
         """
         Directly invoke an MCP tool by name. Called by agents to USE a tool.
-        Handles both sync callables and LangChain StructuredTool objects.
+        Handles sync callables, async callables, and LangChain StructuredTool objects (sync & async).
         Returns a string result or error message.
         """
         tool = self.registry.get(tool_name)
@@ -104,18 +104,54 @@ class MetaHand:
             return f"[Meta-Hand] ERROR: Tool '{tool_name}' not found in registry."
 
         try:
-            # LangChain tools use .invoke() or are directly callable
-            if hasattr(tool, "invoke"):
+            # 1. LangChain StructuredTool or objects with ainvoke / invoke
+            if hasattr(tool, "ainvoke") or hasattr(tool, "invoke"):
+                # Try ainvoke first if available (MCP tools from LangChain adapters are async StructuredTools)
+                if hasattr(tool, "ainvoke"):
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            import nest_asyncio
+                            nest_asyncio.apply()
+                            result = loop.run_until_complete(tool.ainvoke(kwargs))
+                        else:
+                            result = loop.run_until_complete(tool.ainvoke(kwargs))
+                        return str(result)
+                    except Exception as aerr:
+                        # Fallback to sync invoke if ainvoke fails
+                        try:
+                            result = tool.invoke(kwargs)
+                            return str(result)
+                        except Exception:
+                            raise aerr
+
+                # Fallback to invoke
                 result = tool.invoke(kwargs)
+                return str(result)
+
+            # 2. Raw callables (sync or async)
             elif callable(tool):
-                result = tool(**kwargs)
-                if asyncio.iscoroutine(result):
+                if asyncio.iscoroutinefunction(tool):
                     loop = asyncio.get_event_loop()
-                    result = loop.run_until_complete(result)
+                    if loop.is_running():
+                        import nest_asyncio
+                        nest_asyncio.apply()
+                        result = loop.run_until_complete(tool(**kwargs))
+                    else:
+                        result = loop.run_until_complete(tool(**kwargs))
+                else:
+                    result = tool(**kwargs)
+                    if asyncio.iscoroutine(result):
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            import nest_asyncio
+                            nest_asyncio.apply()
+                            result = loop.run_until_complete(result)
+                        else:
+                            result = loop.run_until_complete(result)
+                return str(result)
             else:
                 return f"[Meta-Hand] ERROR: '{tool_name}' is not callable."
-
-            return str(result)
         except Exception as e:
             return f"[Meta-Hand] TOOL EXECUTION ERROR ({tool_name}): {e}\n{traceback.format_exc()}"
 
