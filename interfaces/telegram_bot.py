@@ -184,6 +184,16 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔄 <b>Genesis State & Memory Flushed.</b>", parse_mode=ParseMode.HTML)
 
 
+async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return
+    from Genesis.core.logger import audit_logger
+    logs_data = audit_logger.get_recent_logs(20)
+    # Format safely to avoid HTML parse errors
+    escaped = html.escape(logs_data)
+    await update.message.reply_text(f"🔍 <b>Recent Granular Logs:</b>\n<pre>{escaped}</pre>", parse_mode=ParseMode.HTML)
+
+
 async def shutdown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update):
         return
@@ -270,6 +280,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 except Exception:
                     pass
+            elif event_type == "immediate_response":
+                # Send the fast-lane response immediately!
+                html_formatted = to_telegram_html(text)
+                chunks = split_telegram_message(html_formatted)
+                for chunk in chunks:
+                    asyncio.run_coroutine_threadsafe(
+                        update.message.reply_text(chunk, parse_mode=ParseMode.HTML),
+                        context.application.loop
+                    )
 
         set_progress_callback(progress_callback)
 
@@ -290,9 +309,43 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ <b>Execution Error:</b> {e}", parse_mode=ParseMode.HTML)
 
 
-def create_bot_application():
-    """Initializes python-telegram-bot application."""
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+async def autonomous_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return
+
+    task_input = " ".join(context.args) if context.args else "Execute full autonomous collaboration cycle."
+    await update.message.reply_text(f"🤝 <b>AUTONOMOUS SWARM INITIATED</b>\nTask: <i>{html.escape(task_input)}</i>\n\nStarting live agent discussion...", parse_mode=ParseMode.HTML)
+    
+    # Delegate to message_handler logic with forced autonomous routing
+    update.message.text = f"autonomous: {task_input}"
+    await message_handler(update, context)
+
+
+async def setup_mobile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return
+
+    mobile_guide = (
+        "📱 <b>SentinelAI Smartphone Mobile Setup Guide</b>\n\n"
+        "1. Open Telegram app on your iPhone or Android phone.\n"
+        "2. Search for <code>@sentinelAI_2k26_bot</code> or open: https://t.me/sentinelAI_2k26_bot\n"
+        "3. Send <code>/start</code> from your phone.\n"
+        "4. Your phone is now paired! You can run standard prompts, switch LLMs via <code>/model</code>, or launch <code>/autonomous</code>.\n"
+        "5. For remote Wake-on-LAN when away from home, use your local relay or PC wake settings."
+    )
+    await update.message.reply_text(mobile_guide, parse_mode=ParseMode.HTML)
+
+
+def create_bot_application(post_init=None):
+    """Creates and configures the Telegram Bot Application."""
+    if not BOT_TOKEN or "8692616692:AAEO8I4jPK0Yku" not in BOT_TOKEN:
+        print("⚠️ Warning: Bot token looks invalid or default. Update SENTINEL_BOT_TOKEN.")
+
+    builder = ApplicationBuilder().token(BOT_TOKEN)
+    if post_init:
+        builder = builder.post_init(post_init)
+    
+    app = builder.build()
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
@@ -301,6 +354,9 @@ def create_bot_application():
     app.add_handler(CommandHandler("stop", stop_command))
     app.add_handler(CommandHandler("reset", reset_command))
     app.add_handler(CommandHandler("shutdown", shutdown_command))
+    app.add_handler(CommandHandler("autonomous", autonomous_command))
+    app.add_handler(CommandHandler("setup_mobile", setup_mobile_command))
+    app.add_handler(CommandHandler("logs", logs_command))
     app.add_handler(CallbackQueryHandler(model_button_callback, pattern="^model_"))
     app.add_handler(CallbackQueryHandler(shutdown_button_callback, pattern="^shutdown_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))

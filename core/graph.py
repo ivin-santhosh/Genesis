@@ -39,10 +39,14 @@ _abort_flag: Optional[threading.Event] = None
 def set_progress_callback(fn: Optional[Callable[[str, str, str, int], None]]):
     """
     Registers progress callback: fn(event_type, agent_name, text_content, iteration)
-    event_type: 'swarm_message' | 'agent_typing' | 'verdict'
+    event_type: 'swarm_message' | 'agent_typing' | 'verdict' | 'immediate_response'
     """
     global _progress_callback
     _progress_callback = fn
+
+def dispatch_progress(event_type: str, agent_name: str, text: str, iteration: int = 0):
+    if _progress_callback:
+        _progress_callback(event_type, agent_name, text, iteration)
 
 
 def set_abort_flag(flag: Optional[threading.Event]):

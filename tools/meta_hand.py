@@ -99,9 +99,19 @@ class MetaHand:
         Handles sync callables, async callables, and LangChain StructuredTool objects (sync & async).
         Returns a string result or error message.
         """
+        from Genesis.core.security_gateway import security_gateway
+        
+        # Algorithmic Security Enforcer Check
+        is_allowed, block_reason = security_gateway.enforce_algorithmic_rules(tool_name, kwargs)
+        if not is_allowed:
+            return block_reason
+
         tool = self.registry.get(tool_name)
         if tool is None:
             return f"[Meta-Hand] ERROR: Tool '{tool_name}' not found in registry."
+
+        from Genesis.core.logger import audit_logger
+        audit_logger.log("MetaHand", f"Executing Tool: {tool_name} | Args: {kwargs}")
 
         try:
             # 1. LangChain StructuredTool or objects with ainvoke / invoke
@@ -203,6 +213,39 @@ class MetaHand:
             return f"SUCCESS: Capability '{function_name}' synthesized and ready for O(1) deployment."
         else:
             return f"IMMUNE REJECTION: Tool synthesis failed.\n{result}"
+
+
+    def persist_system_instruction(self, role: str, instruction: str) -> str:
+        """
+        Persists a new or updated system instruction rule for an agent role ('nexus', 'coder', 'thinker', 'all')
+        into config/system_instructions.json without error, persisting across sessions.
+        """
+        import os, json
+        config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
+        os.makedirs(config_dir, exist_ok=True)
+        instr_file = os.path.join(config_dir, "system_instructions.json")
+
+        current = {}
+        if os.path.exists(instr_file):
+            try:
+                with open(instr_file, "r", encoding="utf-8") as f:
+                    current = json.load(f)
+            except Exception:
+                current = {}
+
+        role_key = role.lower()
+        if role_key not in current:
+            current[role_key] = []
+        
+        if instruction not in current[role_key]:
+            current[role_key].append(instruction)
+
+        try:
+            with open(instr_file, "w", encoding="utf-8") as f:
+                json.dump(current, f, indent=2)
+            return f"[Meta-Hand] SUCCESS: System instruction for '{role_key}' persisted successfully to system_instructions.json."
+        except Exception as e:
+            return f"[Meta-Hand] WRITE ERROR: {e}"
 
 
 # Instantiate the global singleton

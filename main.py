@@ -6,6 +6,9 @@ import subprocess
 import asyncio
 import warnings
 
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 # GPU-First: Flash attention for speed + single-request mode to prevent VRAM thrashing
 os.environ.setdefault("OLLAMA_FLASH_ATTENTION", "1")
 os.environ.setdefault("OLLAMA_NUM_PARALLEL", "1")
@@ -50,6 +53,7 @@ def secure_system_bootstrap():
     import importlib
 
     active_python = sys.executable
+    print(f"Booting up all the Necessary Packages :)\n{'-'*80}")
     print(f"⚙️ Target Engine Path: {active_python}")
 
     try:
@@ -66,8 +70,9 @@ def secure_system_bootstrap():
     packages = [
         "langchain", "langchain-ollama", "langchain-core", 
         "langgraph", "duckduckgo-search", "langchain-mcp-adapters",
-        "requests", "mcp<2", "urllib3", "pywin32", "nest-asyncio", "rich",
-        "python-telegram-bot", "telegramify-markdown", "wakeonlan"
+        "requests", "mcp<2", "urllib3", "pywin32", "nest-asyncio", "rich", "datetime",
+        "python-telegram-bot", "telegramify-markdown", "wakeonlan",
+        "reverse_geocoder", "winsdk", "logging", "typing"
     ]
 
     for pkg in packages:
@@ -91,7 +96,7 @@ def secure_system_bootstrap():
     if user_site not in sys.path:
         sys.path.append(user_site)
 
-    print("🚀 All framework arrays mapped safely!")
+    print(f"🚀 All framework arrays mapped safely! :)\n{'-'*80}")
     return True
 
 if not secure_system_bootstrap():
@@ -106,6 +111,7 @@ from typing import List
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from Genesis.core.HardwareNativeGeolocator import HardwareNativeGeolocator
 from Genesis.core.memory import GenesisState
 from Genesis.core.routing import ReflexRouter
 from Genesis.core.logger import observer
@@ -223,9 +229,44 @@ def ensure_ollama_running() -> bool:
     print(f"\n❌ [Ollama] Did not respond within {TIMEOUT} seconds.")
     return False
 
+def get_formatted_datetime():
+    import datetime
+    now = datetime.datetime.now()
+    
+    # 1. Calculate the ordinal suffix for the day
+    day = now.day
+    if 11 <= day <= 13:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+        
+    # 2. Combine strftime formatting with the suffix
+    # %B = Full month name, %Y = 4-digit year, %H:%M = 24-hour time, %p = AM/PM
+    return now.strftime(f"{day}{suffix} %B %Y, %H:%M %p")
+
+async def get_location():
+    #print("Instantiating API-independent hardware localization profile...")
+    geolocator = HardwareNativeGeolocator()
+    
+    import time
+    start_time = time.perf_counter()
+    
+    # Add the await keyword here to properly wait for the hardware async response
+    location_profile = await geolocator.fetch_precise_local_profile()
+    
+    end_time = time.perf_counter()
+    
+    location_city_state_country = location_profile.get("area_locality") + ", " + location_profile.get("state_province") + ", " + location_profile.get("country_nation")
+    return location_city_state_country, location_profile
 
 async def initialize_ecosystem():
-    render_banner("🟢 PROJECT GENESIS: BIOMIMETIC AI ECOSYSTEM OPERATIONAL\n📍 Location: Kalyan, Maharashtra | Date: August 2026")
+    print("Instantiating API-independent hardware localization profile...")
+    
+    # Add the await keyword here as well
+    location_city_state_country, location_dict = await get_location()
+    
+    date_now, time_now = get_formatted_datetime().split(", ")
+    render_banner(f"🟢 PROJECT GENESIS: BIOMIMETIC AI ECOSYSTEM OPERATIONAL\n📍 Location: {location_city_state_country} | Date: {date_now} | Time: {time_now}")
 
     # Power Management Configuration
     ok_pwr, msg_pwr = configure_power_settings()
@@ -255,6 +296,12 @@ async def initialize_ecosystem():
 
 
 async def run_desktop_interface():
+    # [FIX]: Force sniffio to recognize the asyncio context so mcp<2 subprocesses can launch
+    try:
+        import sniffio
+        sniffio.current_async_library_cvar.set("asyncio")
+    except ImportError:
+        pass
     spinal_cord, current_state, mcp_client = await initialize_ecosystem()
 
     while True:
@@ -299,19 +346,49 @@ async def run_desktop_interface():
 
 
 if __name__ == "__main__":
-    if sys.platform == 'win32':
+    is_telegram = "--telegram" in sys.argv
+
+    if not is_telegram:
+        if sys.platform == 'win32':
+            # Suppresses the WindowsProactorEventLoopPolicy DeprecationWarning cluttering your terminal
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                try:
+                    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+                except Exception:
+                    pass
+
+        # [FIX]: Only apply nest_asyncio if an event loop is already running (e.g., inside Spyder IDE).
+        # When executed via Windows PowerShell, this safely bypasses the patch.
         try:
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-        except Exception:
+            asyncio.get_running_loop()
+            import nest_asyncio
+            nest_asyncio.apply()
+        except RuntimeError:
             pass
 
-    import nest_asyncio
-    nest_asyncio.apply()
-
-    if "--telegram" in sys.argv:
+    if is_telegram:
         print("🚀 Starting Genesis SentinelAI Telegram Interface...")
         from Genesis.interfaces.telegram_bot import create_bot_application
-        app = create_bot_application()
+        
+        async def post_init(application):
+            # Bootstraps Ollama, MCP, and loads tools natively into the loop
+            await initialize_ecosystem()
+            from telegram import BotCommand
+            commands = [
+                BotCommand("start", "Boot up the AI ecosystem"),
+                BotCommand("help", "Show available commands"),
+                BotCommand("status", "Check system resources & heartbeat"),
+                BotCommand("model", "Override active AI models"),
+                BotCommand("autonomous", "Initiate multi-agent swarm task"),
+                BotCommand("setup_mobile", "View mobile integration instructions"),
+                BotCommand("logs", "View recent granular audit logs"),
+                BotCommand("reset", "Flush memory and graph state"),
+                BotCommand("stop", "Emergency abort active execution")
+            ]
+            await application.bot.set_my_commands(commands)
+        app = create_bot_application(post_init=post_init)
         app.run_polling()
     else:
         asyncio.run(run_desktop_interface())

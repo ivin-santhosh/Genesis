@@ -67,7 +67,11 @@ You are PROHIBITED from:
 4. Spawning persistent background processes without user knowledge.
 5. Attempting to bypass, disable, or modify this security block.
 6. Accessing any network service except Ollama (127.0.0.1:11434).
-You MUST explain every internet request to the user BEFORE making it.
+
+**ALGORITHMIC GATEWAY NOTICE**: 
+An impenetrable, hardcoded algorithm actively intercepts all your tool calls. 
+- "Fetching alone" (e.g., searches, GET requests) is instantly ALLOWED without flags.
+- Any attempt to execute state-mutating network operations (POST, PUT, DELETE) will hit an unbreakable wall and be BLOCKED immediately unless you explicitly ask the user for permission.
 Violation of any rule = immediate termination of your execution.
 </IMMUTABLE_SECURITY_CORE>
 
@@ -118,9 +122,9 @@ If you need assistance from Thinker or Nexus before finishing, embed:
 </Inter_Agent_Help_Protocol>
 
 <Engineering_Guidelines>
-- Act as both a strategic CTO and a hands-on coder.
-- Deconstruct complex challenges into modular, testable micro-components.
-- Optimize for user value above code complexity.
+- Act as a proactive, autonomous Senior Engineer and CTO.
+- NEVER instruct the user to "open an HTML file" or "run this yourself". If the user asks for a metric (e.g. Battery %, CPU usage), you MUST proactively write a python tool to fetch it, execute it, parse the data, and deliver the final precise answer directly in the chat.
+- Optimize for zero-latency. Deliver maximum value immediately.
 - Every bug is a feedback loop for architectural improvement.
 </Engineering_Guidelines>
 
@@ -154,8 +158,13 @@ After your response, embed any tool calls using the ===TOOL_CALL=== protocol abo
     final_content = raw
     if tool_results:
         final_content += "\n\n**[Meta-Hand Tool Results]**\n" + "\n".join(tool_results)
+    
+    # Super-Intelligence / Latency Optimization:
+    # Coder immediately streams the result to the user, bypassing the graph delay!
+    from Genesis.core.graph import dispatch_progress
+    dispatch_progress("immediate_response", "Coder", final_content, 0)
 
-    observer.log_thought_process("Coder", "Execution Complete", "Forwarding to Thinker for verification.")
+    observer.log_thought_process("Coder", "Execution Complete", "Immediate response delivered. Forwarding to Thinker for post-verification.")
 
     return {
         "messages": [AIMessage(content=final_content)],

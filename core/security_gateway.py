@@ -102,5 +102,48 @@ class SecurityGateway:
         cls.log_audit("WEB_REQUEST", {"url": url, "method": method}, "SENSITIVE", "Default transparent evaluation for unclassified URL.")
         return "SENSITIVE", "Target URL is outside the pre-approved harmless whitelist. Requires user authorization."
 
+    @classmethod
+    def enforce_algorithmic_rules(cls, tool_name: str, kwargs: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Algorithmic Enforcement Layer (Layer 2).
+        Intercepts tool execution to guarantee compliance with core rules (e.g., "Internet is for fetching alone").
+        Returns (is_allowed, block_reason).
+        """
+        # Rule 1: "Internet is strictly for fetching alone"
+        # Pure fetch tools are implicitly allowed.
+        fetch_tools = {"duckduckgo_search", "duckduckgo_news", "read_webpage"}
+        if tool_name in fetch_tools:
+            return True, ""
+
+        # For shell execution or python scripts, scan for state-mutating network operations
+        text_to_scan = ""
+        if tool_name == "run_cmd":
+            text_to_scan = str(kwargs.get("command", ""))
+        elif tool_name == "execute_python":
+            text_to_scan = str(kwargs.get("code", ""))
+
+        if text_to_scan:
+            # Check for network utilities
+            network_keywords = ["curl", "wget", "invoke-webrequest", "requests.", "urllib", "http.client"]
+            is_network_op = any(kw in text_to_scan.lower() for kw in network_keywords)
+
+            if is_network_op:
+                # If it's a network operation, scan for non-fetch indicators
+                mutating_flags = [
+                    "-x post", "-x put", "-x delete", "-x patch",
+                    "--request post", "--request put", "--request delete",
+                    "--data", "-d ", "--post-data",
+                    "requests.post", "requests.put", "requests.delete", "requests.patch",
+                    "method='post'", 'method="post"'
+                ]
+                is_mutating = any(flag in text_to_scan.lower() for flag in mutating_flags)
+
+                if is_mutating:
+                    reason = "[SECURITY GATEWAY] ALGORITHMIC BLOCK: Agent instruction violated. Internet is strictly for fetching alone. State-mutating requests (POST/PUT/DELETE) are blocked. If you require this, you must ask the user for direct assistance."
+                    cls.log_audit("ALGORITHMIC_BLOCK", {"tool": tool_name, "args": kwargs}, "BLOCKED", "Violated fetching-alone rule.")
+                    return False, reason
+
+        return True, ""
+
 
 security_gateway = SecurityGateway()

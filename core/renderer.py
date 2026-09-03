@@ -31,6 +31,33 @@ except ImportError:
     _con = None
 
 
+class StderrInterceptor:
+    """Intercepts sys.stderr and renders formatted Rich warnings/alerts."""
+    def __init__(self, original_stderr):
+        self.original_stderr = original_stderr
+
+    def write(self, text: str):
+        if text.strip():
+            render_stderr_event(text.strip())
+        self.original_stderr.write(text)
+
+    def flush(self):
+        self.original_stderr.flush()
+
+
+def render_stderr_event(err_msg: str):
+    """Formats and prints intercepted sys.stderr messages cleanly via Rich or callback."""
+    if _OUTPUT_CALLBACK is not None:
+        _OUTPUT_CALLBACK("stderr_event", err_msg, {"mode": _CURRENT_MODE})
+        return
+
+    if _CURRENT_MODE in ["SPYDER", "TERMINAL"] and _RICH:
+        _con.print(f"⚠️ [bold yellow][sys.stderr]:[/bold yellow] [dim]{err_msg}[/dim]")
+    else:
+        print(f"⚠️ [sys.stderr]: {err_msg}", flush=True)
+    sys.stdout.flush()
+
+
 # --- MODE AUTO-DETLECTION & CONFIG ---
 def _detect_initial_mode() -> str:
     """Detects default environment mode on startup."""
@@ -85,7 +112,7 @@ def to_telegram_html(text: str) -> str:
     def save_code_block(match):
         lang = match.group(1) or ""
         code_content = html.escape(match.group(2))
-        placeholder = f"___CODE_BLOCK_{len(code_blocks)}___"
+        placeholder = f"@@@CODE_BLOCK_{len(code_blocks)}@@@"
         if lang:
             code_blocks.append(f'<pre><code class="language-{lang}">{code_content}</code></pre>')
         else:
@@ -98,7 +125,7 @@ def to_telegram_html(text: str) -> str:
     inline_codes = []
     def save_inline_code(match):
         code_content = html.escape(match.group(1))
-        placeholder = f"___INLINE_CODE_{len(inline_codes)}___"
+        placeholder = f"@@@INLINE_CODE_{len(inline_codes)}@@@"
         inline_codes.append(f'<code>{code_content}</code>')
         return placeholder
 
@@ -115,10 +142,10 @@ def to_telegram_html(text: str) -> str:
 
     # 5. Restore inline codes and code blocks
     for i, code_html in enumerate(inline_codes):
-        text = text.replace(f"___INLINE_CODE_{i}___", code_html)
+        text = text.replace(f"@@@INLINE_CODE_{i}@@@", code_html)
 
     for i, block_html in enumerate(code_blocks):
-        text = text.replace(f"___CODE_BLOCK_{i}___", block_html)
+        text = text.replace(f"@@@CODE_BLOCK_{i}@@@", block_html)
 
     return text
 

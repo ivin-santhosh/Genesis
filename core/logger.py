@@ -54,5 +54,32 @@ class NervousSystemLogger:
         with open(self.log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(trace) + "\n")
 
-# Global transparency engine
+class GranularAuditLogger:
+    """
+    Absolute source of truth tracking every granular action, network fetch, tool argument, and agent thought.
+    """
+    def __init__(self, log_file: str = "logs/genesis_granular_audit.log"):
+        import os
+        self.log_file = log_file
+        os.makedirs(os.path.dirname(self.log_file), exist_ok=True)
+    
+    def log(self, category: str, message: str, severity: str = "INFO"):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        entry = f"[{timestamp}] [{severity}] [{category}] {message}\n"
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(entry)
+        except Exception:
+            pass
+            
+    def get_recent_logs(self, count: int = 20) -> str:
+        try:
+            with open(self.log_file, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            return "".join(lines[-count:]) if lines else "No logs available."
+        except Exception as e:
+            return f"Error reading logs: {e}"
+
+# Global transparency engines
 observer = NervousSystemLogger()
+audit_logger = GranularAuditLogger()
