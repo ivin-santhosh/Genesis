@@ -16,6 +16,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from Genesis.tools.meta_hand import meta_hand_manager
+from Genesis.core.memory import GenesisState
 from Genesis.core.model_registry import model_registry
 # Force UTF-8 stdout encoding for Windows console compatibility
 if hasattr(sys.stdout, "reconfigure"):
@@ -46,7 +47,7 @@ def demo_mcp_and_a2a():
     # Execute a tool call directly via MetaHand
     tool_name = list(meta_hand_manager.registry.keys())[0]
     print(f"⚡ [MCP Execution] Executing tool: '{tool_name}'...")
-    res = meta_hand_manager.execute_tool(tool_name)
+    res = meta_hand_manager.execute_tool(tool_name, a=2, b=3) if tool_name == "add_int" else meta_hand_manager.execute_tool(tool_name)
     print(f"   ↳ Result: {res[:200]}")
 
     # 3. Test Error Capture (Universal Anti-Hallucination Contract)
@@ -66,14 +67,17 @@ def demo_mcp_and_a2a():
             {"role": "thinker", "content": "Thinker verified code. Verdict: DONE", "tool_hint": ""}
         ],
         "autonomous_iteration_count": 1,
-        "active_permissions": []
+        "active_permissions": {},
+        "user_profit_metric": 0.0,
+        "task_dag": [],
+        "meta_hand_cache": {}
     }
 
     print(f"   ↳ A2A Message Count: {len(state['agent_messages'])}")
     for msg in state["agent_messages"]:
         print(f"      • [{msg['role'].upper()}]: {msg['content']}")
 
-    print("\n✅ DEMO COMPLETE: All A2A, MCP, and Error Handling Pathways 100% Operational.")
+    print("\n✅ DEMO CHECKS COMPLETED: basic MCP execution, state shape, and explicit error reporting.")
     print("="*70)
 
 
