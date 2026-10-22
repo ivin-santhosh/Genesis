@@ -1,0 +1,25 @@
+name: Genesis Security and Syntax Checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Genesis
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile tracked Python source
+        run: python -m compileall -q Genesis
+      - name: Run deterministic unit tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m unittest discover -s Genesis/tests -v
