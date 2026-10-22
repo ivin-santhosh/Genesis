@@ -42,16 +42,15 @@ class SafeExecSandbox:
             raise ValueError(f"Syntax Error in generated code: {e}")
 
     def execute(self, source_code: str, function_name: str) -> Tuple[bool, Any]:
-        try:
-            self._verify_ast(source_code)
-            safe_globals = {'__builtins__': __builtins__}
-            safe_locals = {}
-            exec(source_code, safe_globals, safe_locals)
-            if function_name not in safe_locals:
-                return False, f"Function '{function_name}' not found in compiled code."
-            return True, safe_locals[function_name]
-        except Exception as e:
-            return False, f"[Sandbox Violation] {str(e)}\n{traceback.format_exc()}"
+        """Fail closed: AST validation alone cannot isolate untrusted Python code.
+
+        A future implementation must use an isolated process/container with
+        explicit resource, filesystem, network and permission boundaries.
+        """
+        return False, (
+            "[Sandbox Disabled] In-process agent-generated Python execution "
+            "is unsafe and is disabled pending OS-enforced isolation."
+        )
 
 
 class MetaHand:
@@ -166,53 +165,18 @@ class MetaHand:
             return f"[Meta-Hand] TOOL EXECUTION ERROR ({tool_name}): {e}\n{traceback.format_exc()}"
 
     def append_tool_to_mcp(self, function_code: str) -> str:
-        """
-        Appends a new @mcp.tool() decorated function to tools/mcp_tools.py.
-        This persists the new tool so it is loaded on the NEXT MCP reload cycle.
-        The function_code must be a complete, valid Python function string.
-        Returns a status message.
-        """
-        import os
-        mcp_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "tools", "mcp_tools.py"
+        """Fail closed: agents may not persist executable Python source."""
+        return (
+            "[Meta-Hand] BLOCKED: Agent-generated changes to MCP server source "
+            "are disabled. Submit reviewed code through version control."
         )
 
-        if not os.path.exists(mcp_path):
-            return f"[Meta-Hand] ERROR: mcp_tools.py not found at {mcp_path}"
-
-        # Validate syntax before writing
-        try:
-            ast.parse(function_code)
-        except SyntaxError as e:
-            return f"[Meta-Hand] SYNTAX ERROR in new tool code: {e}"
-
-        # Ensure the @mcp.tool() decorator is present
-        stripped = function_code.strip()
-        if not stripped.startswith("@mcp.tool"):
-            function_code = "@mcp.tool()\n" + function_code
-
-        try:
-            with open(mcp_path, "a", encoding="utf-8") as f:
-                f.write("\n\n# --- AGENT-GENERATED TOOL ---\n")
-                f.write(function_code.strip())
-                f.write("\n")
-            return f"[Meta-Hand] SUCCESS: New tool appended to mcp_tools.py. It will be available after the next MCP reload."
-        except Exception as e:
-            return f"[Meta-Hand] WRITE ERROR: {e}"
-
     def mutate_tool(self, source_code: str, function_name: str) -> str:
-        """
-        In-process tool synthesis via sandbox (for immediate, ephemeral tools).
-        For persistent tools, use append_tool_to_mcp() instead.
-        """
-        print(f"🧪 [Meta-Hand] Synthesizing new capability: {function_name}...")
-        success, result = self.sandbox.execute(source_code, function_name)
-        if success:
-            self.register_tool(function_name, result)
-            return f"SUCCESS: Capability '{function_name}' synthesized and ready for O(1) deployment."
-        else:
-            return f"IMMUNE REJECTION: Tool synthesis failed.\n{result}"
+        """Fail closed until an actual isolated sandbox is implemented."""
+        return (
+            "[Meta-Hand] BLOCKED: Runtime code synthesis is disabled. "
+            "Use version-controlled, reviewed tools instead."
+        )
 
 
     def persist_system_instruction(self, role: str, instruction: str) -> str:
