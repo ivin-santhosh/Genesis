@@ -102,47 +102,46 @@ class SecurityGateway:
         cls.log_audit("WEB_REQUEST", {"url": url, "method": method}, "SENSITIVE", "Default transparent evaluation for unclassified URL.")
         return "SENSITIVE", "Target URL is outside the pre-approved harmless whitelist. Requires user authorization."
 
+    # Names matching these capabilities are denied to AI agents until there is
+    # an authenticated, per-operation human approval mechanism. Tool descriptions
+    # and prompt instructions alone are not authorization.
+    DANGEROUS_TOOLS = {
+        "run_cmd", "run_powershell", "execute_python",
+        "append_tool_to_mcp", "mutate_tool", "persist_system_instruction",
+        "custom_python_tool_create", "custom_python_tool_run",
+        "custom_python_tool_delete", "custom_dsl_tool_create",
+        "custom_dsl_tool_run", "custom_dsl_tool_delete",
+        "tool_registry_sync", "soar_orchestrate",
+        "fw_block_ip", "fw_lockdown_mode",
+        "firewall_block_ip", "firewall_lockdown_mode",
+        "defender_update", "defender_update_signatures",
+        "defender_scan_quick", "defender_scan_full",
+        "defender_quick_scan", "defender_full_scan",
+    }
+    DANGEROUS_PREFIXES = (
+        "shell_", "terminal_", "exec_", "powershell_", "subprocess_",
+        "system_shutdown", "delete_", "write_", "upload_", "send_",
+    )
+
     @classmethod
     def enforce_algorithmic_rules(cls, tool_name: str, kwargs: Dict[str, Any]) -> Tuple[bool, str]:
+        """Enforce an explicit boundary for high-risk agent operations.
+
+        This is defense in depth, NOT a substitute for OS-level isolation or
+        for authorization inside each individual MCP server.
         """
-        Algorithmic Enforcement Layer (Layer 2).
-        Intercepts tool execution to guarantee compliance with core rules (e.g., "Internet is for fetching alone").
-        Returns (is_allowed, block_reason).
-        """
-        # Rule 1: "Internet is strictly for fetching alone"
-        # Pure fetch tools are implicitly allowed.
-        fetch_tools = {"duckduckgo_search", "duckduckgo_news", "read_webpage"}
-        if tool_name in fetch_tools:
-            return True, ""
+        name = str(tool_name).strip().lower()
+        if name in cls.DANGEROUS_TOOLS or any(name.startswith(p) for p in cls.DANGEROUS_PREFIXES):
+            cls.log_audit("AGENT_TOOL_DENIED", {"tool": name}, "BLOCKED",
+                          "High-risk operation requires a future human-approval mechanism.")
+            return False, (
+                "[SECURITY GATEWAY] BLOCKED: Agent tool '" + name +
+                "' requires explicit authenticated approval and is disabled."
+            )
 
-        # For shell execution or python scripts, scan for state-mutating network operations
-        text_to_scan = ""
-        if tool_name == "run_cmd":
-            text_to_scan = str(kwargs.get("command", ""))
-        elif tool_name == "execute_python":
-            text_to_scan = str(kwargs.get("code", ""))
-
-        if text_to_scan:
-            # Check for network utilities
-            network_keywords = ["curl", "wget", "invoke-webrequest", "requests.", "urllib", "http.client"]
-            is_network_op = any(kw in text_to_scan.lower() for kw in network_keywords)
-
-            if is_network_op:
-                # If it's a network operation, scan for non-fetch indicators
-                mutating_flags = [
-                    "-x post", "-x put", "-x delete", "-x patch",
-                    "--request post", "--request put", "--request delete",
-                    "--data", "-d ", "--post-data",
-                    "requests.post", "requests.put", "requests.delete", "requests.patch",
-                    "method='post'", 'method="post"'
-                ]
-                is_mutating = any(flag in text_to_scan.lower() for flag in mutating_flags)
-
-                if is_mutating:
-                    reason = "[SECURITY GATEWAY] ALGORITHMIC BLOCK: Agent instruction violated. Internet is strictly for fetching alone. State-mutating requests (POST/PUT/DELETE) are blocked. If you require this, you must ask the user for direct assistance."
-                    cls.log_audit("ALGORITHMIC_BLOCK", {"tool": tool_name, "args": kwargs}, "BLOCKED", "Violated fetching-alone rule.")
-                    return False, reason
-
+        # Do not attempt to secure arbitrary shell/Python by scanning keywords.
+        # Deny dangerous execution tools by identity, above; review each newly
+        # registered tool before exposure to any untrusted agent.
         return True, ""
 
 
