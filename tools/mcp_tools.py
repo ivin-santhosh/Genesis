@@ -65,7 +65,33 @@ builtins.print = mcp_safe_print
 
 # Real Programming starts
 
-mcp = FastMCP("Local")
+# Explicitly register only verified, low-risk tools with the public MCP server.
+# All other decorated tools remain callable internally but are never advertised.
+_MCP_PUBLIC_ALLOWLIST = frozenset({
+    "add_float", "subtract_float", "multiply_float", "divide_float",
+    "add_int", "subtract_int", "multiply_int", "divide_int",
+    "get_datetime", "severity_score", "mitre_guess",
+})
+
+_mcp_server = FastMCP("Local")
+
+class _SafeToolRegistry:
+    """Restrict exported MCP tools independent of agent-side enforcement."""
+    def __init__(self, server):
+        self._server = server
+
+    def tool(self, *args, **kwargs):
+        real_decorator = self._server.tool(*args, **kwargs)
+        def register(function):
+            if function.__name__ not in _MCP_PUBLIC_ALLOWLIST:
+                return function
+            return real_decorator(function)
+        return register
+
+    def run(self, *args, **kwargs):
+        return self._server.run(*args, **kwargs)
+
+mcp = _SafeToolRegistry(_mcp_server)
 
 
 # float methods
