@@ -1,0 +1,9 @@
+# Optional legacy agent dependencies. Install in a virtual environment only.
+langgraph>=0.2,<2
+langchain-core>=0.3,<2
+langchain-ollama>=0.2,<2
+langchain-mcp-adapters>=0.1,<1
+mcp>=1,<2
+psutil>=5.9,<9
+rich>=13,<15
+nest-asyncio>=1.6,<2

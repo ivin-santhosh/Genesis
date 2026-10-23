@@ -65,7 +65,7 @@ class MetaHand:
     def register_tool(self, tool_name: str, tool_obj: Any):
         """Binds a new capability to muscle memory."""
         self.registry[tool_name] = tool_obj
-        print(f"🧬 [Meta-Hand] Muscle memory updated. Tool loaded: {tool_name}")
+        print(f"[Meta-Hand] Tool registered: {tool_name}")
 
     def get_tool(self, tool_name: str) -> Optional[Any]:
         """O(1) Dictionary lookup. Zero latency."""
