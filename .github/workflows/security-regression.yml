@@ -29,3 +29,8 @@ jobs:
         run: |
           python -m Genesis.runtime --db /tmp/genesis-ci-state.sqlite3 demo
           python -m Genesis.runtime --db /tmp/genesis-ci-state.sqlite3 tools
+      - name: Verify first-run module startup without installed Ollama
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python -c "import subprocess, sys; p=subprocess.run([sys.executable,'-m','Genesis'], input='/calc 5+7\n/demo\n/quit\n', text=True, capture_output=True, timeout=30); print(p.stdout); print(p.stderr); assert p.returncode == 0; assert '12.0' in p.stdout; assert 'PASS' in p.stdout"
