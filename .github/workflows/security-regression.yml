@@ -23,3 +23,9 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python -m unittest discover -s Genesis/tests -v
+      - name: Run checkpointed CLI smoke demo
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python -m Genesis.runtime --db /tmp/genesis-ci-state.sqlite3 demo
+          python -m Genesis.runtime --db /tmp/genesis-ci-state.sqlite3 tools
