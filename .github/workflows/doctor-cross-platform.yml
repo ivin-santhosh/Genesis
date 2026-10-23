@@ -31,7 +31,7 @@ jobs:
         shell: bash
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: python -m Genesis.runtime.doctor --mode core --json
+        run: python -m Genesis.runtime.doctor --mode core --repair-safe --json
       - name: Doctor optional diagnostic report
         shell: bash
         env:
