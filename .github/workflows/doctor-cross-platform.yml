@@ -1,0 +1,40 @@
+name: Genesis Doctor cross-platform smoke
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  doctor:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Genesis
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile Python files
+        shell: bash
+        run: python -m compileall -q Genesis
+      - name: Run full deterministic tests
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m unittest discover -s Genesis/tests -v
+      - name: Doctor core integration check
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m Genesis.runtime.doctor --mode core --json
+      - name: Doctor optional diagnostic report
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python -m Genesis.runtime.doctor --mode full --json || test $? -eq 2
