@@ -1,5 +1,6 @@
 # Project Genesis
 
+> **Run immediately after cloning:** From the parent folder containing `Genesis`, run `python -m Genesis` (Python 3.11+). The first-run launcher works without third-party packages in its basic offline mode, and detects a running local Ollama model when available. See [FIRST_RUN.md](FIRST_RUN.md). The older multi-agent system remains experimental and is **not** automatically installed or certified working.\n\n
 **Local-first multi-agent AI orchestration with MCP tool execution, A2A collaboration, and explicit verification.**
 
 Project Genesis is an open-source experimental AI engineering system designed to coordinate specialized local agents while keeping tool execution observable and permission-aware. The current implementation uses LangGraph/LangChain-style orchestration, local Ollama-backed models, Model Context Protocol (MCP) tools, and an Agent-to-Agent (A2A) message channel.
