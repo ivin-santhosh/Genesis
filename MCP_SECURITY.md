@@ -16,6 +16,9 @@ The present `mcp.run()` invocation precedes additional function definitions in t
 
 ## Test scope
 
-`python -m unittest discover -s Genesis/tests -v` verifies the source allowlist, excluded dangerous names and its decorator gate, in addition to earlier security regressions.
+`python -m unittest discover -s Genesis/tests -v` verifies:
+- source allowlist policy and decorator gate regressions
+- live stdio MCP handshake and direct denied-tool calls (`tools/list`, `tools/call`)
+- existing security boundary and runtime regressions
 
-Tests are **not** a live end-to-end MCP handshake, Windows security integration test, or penetration test. Run real server integration tests in a disposable least-privilege environment before re-enabling any sensitive tools.
+These checks still are **not** a full penetration test or a complete Windows security integration audit. Run least-privilege environment validation before re-enabling any sensitive tools.
