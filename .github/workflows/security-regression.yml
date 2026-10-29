@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install MCP runtime for boundary tests
+        run: python -m pip install "mcp>=1,<2"
       - name: Compile tracked Python source
         run: python -m compileall -q Genesis
       - name: Run deterministic unit tests
